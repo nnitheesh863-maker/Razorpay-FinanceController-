@@ -1,0 +1,144 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  FINANCE_MANAGER
+  FINANCE_ANALYST
+  VIEWER
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      Role     @default(VIEWER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum RunStatus {
+  COMPLETED
+  RUNNING
+  FAILED
+  PARTIAL
+  CANCELLED
+}
+
+model ReconciliationRun {
+  id               String      @id @default(uuid())
+  source           String
+  recordsProcessed Int         @default(0)
+  matchedRecords   Int         @default(0)
+  exceptionsFound  Int         @default(0)
+  durationMs       Int         @default(0)
+  status           RunStatus   @default(COMPLETED)
+  reconciledAmount Float       @default(0)
+  unmatchedAmount  Float       @default(0)
+  pendingAmount    Float       @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  
+  exceptions       Exception[]
+}
+
+enum ExceptionSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ExceptionStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+}
+
+model Exception {
+  id                  String            @id @default(uuid())
+  type                String
+  amount              Float
+  severity            ExceptionSeverity @default(MEDIUM)
+  status              ExceptionStatus   @default(OPEN)
+  description         String?
+  reconciliationRunId String
+  reconciliationRun   ReconciliationRun @relation(fields: [reconciliationRunId], references: [id])
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Float
+  currency    String   @default("INR")
+  status      String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  SENT
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  CANCELLED
+  VOID
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+model Invoice {
+  id              String            @id @default(uuid())
+  invoiceNumber   String            @unique
+  referenceNumber String?
+  customerName    String
+  customerId      String?
+  issueDate       DateTime
+  dueDate         DateTime
+  currency        String            @default("INR")
+  
+  subtotal        Float             @default(0)
+  tax             Float             @default(0)
+  discount        Float             @default(0)
+  totalAmount     Float             @default(0)
+  paidAmount      Float             @default(0)
+  balanceDue      Float             @default(0)
+  
+  status          InvoiceStatus     @default(DRAFT)
+  paymentStatus   PaymentStatus     @default(UNPAID)
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  lineItems       InvoiceLineItem[]
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(uuid())
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Float    @default(0)
+  tax         Float    @default(0)
+  discount    Float    @default(0)
+  lineTotal   Float    @default(0)
+  
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
