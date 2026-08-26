@@ -1,5 +1,5 @@
-import axiosInstance from './axios';
-import { 
+import { apiClient as axiosInstance } from './axios';
+import type { 
   TransactionFilters, 
   TransactionListResponse, 
   Transaction,

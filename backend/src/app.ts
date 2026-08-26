@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import transactionRoutes from './routes/transaction.routes';
 import invoiceRoutes from './routes/invoice.routes';
+import agentRoutes from './routes/agent.routes';
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/invoices', invoiceRoutes);
+app.use('/api/v1/agent', agentRoutes);
 
 // Basic health check route for Phase 1
 app.get('/api/v1/health', (req: Request, res: Response) => {

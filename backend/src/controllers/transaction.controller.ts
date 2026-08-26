@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 export const getTransactions = async (req: Request, res: Response) => {
   try {
@@ -65,7 +64,7 @@ export const getTransactionById = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const transaction = await prisma.transaction.findUnique({
-      where: { id },
+      where: { id: id as string },
     });
 
     if (!transaction) {

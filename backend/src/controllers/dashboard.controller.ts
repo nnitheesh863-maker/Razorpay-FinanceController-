@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
-import { PrismaClient, ExceptionStatus } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { ExceptionStatus } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 export const getDashboardOverview = async (req: Request, res: Response) => {
   try {

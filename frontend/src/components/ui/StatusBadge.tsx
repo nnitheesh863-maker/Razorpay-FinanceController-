@@ -20,8 +20,15 @@ export type FinanceStatus =
   | 'DUPLICATE'
   | 'OPEN'
   | 'IN_REVIEW'
+  | 'UNDER_REVIEW'
   | 'RESOLVED'
-  | 'IGNORED';
+  | 'IGNORED'
+  | 'COMPLETED'
+  | 'RUNNING'
+  | 'PARTIAL'
+  | 'CANCELLED'
+  | 'PARTIAL_MATCH'
+  | 'EXCEPTION';
 
 interface StatusBadgeProps {
   status: FinanceStatus;
@@ -37,17 +44,21 @@ export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
     case 'MATCHED':
     case 'RECONCILED':
     case 'RESOLVED':
+    case 'COMPLETED':
       variant = 'success';
       Icon = CheckCircle2;
       break;
     case 'REVIEW_REQUIRED':
     case 'OPEN':
     case 'PENDING':
+    case 'PARTIAL':
+    case 'PARTIAL_MATCH':
       variant = 'warning';
       Icon = AlertCircle;
       break;
     case 'UNMATCHED':
     case 'FAILED':
+    case 'EXCEPTION':
       variant = 'danger';
       Icon = XCircle;
       break;
@@ -56,10 +67,13 @@ export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
       Icon = Copy;
       break;
     case 'IN_REVIEW':
+    case 'UNDER_REVIEW':
+    case 'RUNNING':
       variant = 'info';
       Icon = Clock;
       break;
     case 'IGNORED':
+    case 'CANCELLED':
       variant = 'neutral';
       Icon = Info;
       break;
