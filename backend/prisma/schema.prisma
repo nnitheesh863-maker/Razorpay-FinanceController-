@@ -76,13 +76,19 @@ model Exception {
 }
 
 model Transaction {
-  id          String   @id @default(uuid())
-  amount      Float
-  currency    String   @default("INR")
-  status      String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  amount        Float
+  currency      String   @default("INR")
+  status        String   // 'SUCCESS', 'PENDING', 'FAILED', 'CANCELLED'
+  type          String   @default("PAYMENT") // 'PAYMENT', 'REFUND', 'TRANSFER', 'ADJUSTMENT', 'FEE'
+  reference     String?  // External reference (e.g. gateway txn id)
+  paymentMethod String?  // 'CARD', 'UPI', 'NETBANKING', 'WALLET', 'BANK_TRANSFER'
+  invoiceId     String?  // Linked Invoice ID
+  paymentId     String?  // Linked Payment ID
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?  // User ID who created it
 }
 
 enum InvoiceStatus {
@@ -140,5 +146,24 @@ model InvoiceLineItem {
   
   invoiceId   String
   invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  amount           Float
+  currency         String   @default("INR")
+  paymentMethod    String   // 'CARD', 'UPI', 'NETBANKING', 'WALLET', 'BANK_TRANSFER'
+  paymentGateway   String?  // e.g. 'RAZORPAY'
+  gatewayPaymentId String?
+  status           String   // 'CAPTURED', 'PENDING', 'FAILED', 'REFUNDED'
+  customerName     String?
+  customerEmail    String?
+  paymentDate      DateTime @default(now())
+  invoiceId        String?  // Linked Invoice ID
+  transactionId    String?  // Linked Transaction ID
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdBy        String?  // User ID who created it
 }
 

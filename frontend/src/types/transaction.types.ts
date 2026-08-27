@@ -1,6 +1,5 @@
-export type TransactionStatus = 'COMPLETED' | 'PENDING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'REVERSED';
-export type TransactionType = 'DEBIT' | 'CREDIT' | 'REFUND' | 'REVERSAL';
-export type ReconciliationStatus = 'MATCHED' | 'UNMATCHED' | 'PARTIAL_MATCH' | 'REVIEW_REQUIRED' | 'EXCEPTION' | 'NOT_RECONCILED';
+export type TransactionStatus = 'SUCCESS' | 'PENDING' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
+export type TransactionType = 'PAYMENT' | 'REFUND' | 'TRANSFER' | 'ADJUSTMENT' | 'FEE';
 
 export interface Pagination {
   total: number;
@@ -14,26 +13,26 @@ export interface Transaction {
   amount: number;
   currency: string;
   status: TransactionStatus | string;
+  type: TransactionType | string;
+  reference?: string | null;
+  paymentMethod?: string | null;
+  invoiceId?: string | null;
+  paymentId?: string | null;
   description: string | null;
   createdAt: string;
   updatedAt: string;
-  // Based on current Prisma schema, these might not all exist yet, 
-  // but we add them as optional for future expansion in phase 6:
-  type?: TransactionType;
-  reconciliationStatus?: ReconciliationStatus;
-  customerName?: string;
-  paymentMethod?: string;
-  source?: string;
-  fee?: number;
-  tax?: number;
-  netAmount?: number;
+  createdBy?: string | null;
 }
 
 export interface TransactionFilters {
   page?: number;
   limit?: number;
   status?: string;
+  type?: string;
+  paymentMethod?: string;
   search?: string;
+  startDate?: string;
+  endDate?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
@@ -45,6 +44,9 @@ export interface TransactionListResponse {
 
 export interface TransactionSummary {
   totalTransactions: number;
-  totalAmount: number;
+  totalVolume: number;
+  successfulCount: number;
+  pendingCount: number;
+  failedCount: number;
   statusBreakdown: Record<string, number>;
 }

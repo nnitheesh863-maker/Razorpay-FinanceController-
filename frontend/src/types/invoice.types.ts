@@ -63,7 +63,7 @@ export interface InvoiceSummary {
   totalInvoices: number;
   totalInvoiced: number;
   paid: number;
-  pending: number;
-  overdue: number;
+  outstanding: number;
   statusBreakdown: Record<string, number>;
+  paymentStatusBreakdown: Record<string, number>;
 }

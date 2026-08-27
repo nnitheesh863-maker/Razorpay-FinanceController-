@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { getDashboardOverview } from '../controllers/dashboard.controller';
+import { protect } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// Assuming authentication middleware would be added here
-router.get('/overview', getDashboardOverview);
+router.get('/overview', protect, getDashboardOverview);
 
 export default router;

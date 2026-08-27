@@ -9,6 +9,16 @@ export interface DashboardMetrics {
   openExceptions: number;
   throughput: number;
   totalDurationMs: number;
+  totalTransactionVolume: number;
+  totalTransactions: number;
+  successfulPayments: number;
+  pendingSettlements: number;
+  reconciliationMatchRate: number;
+  totalInvoices?: number;
+  totalInvoiced?: number;
+  outstandingInvoiced?: number;
+  totalPayments?: number;
+  paymentVolume?: number;
 }
 
 export interface FinancialSummary {
@@ -41,6 +51,9 @@ export interface RecentRun {
   durationMs: number;
   status: RunStatus;
   matchRate: number;
+  reconciledAmount: number;
+  unmatchedAmount: number;
+  pendingAmount: number;
 }
 
 export interface ExceptionAttention {
@@ -52,6 +65,28 @@ export interface ExceptionAttention {
   createdAt: string;
 }
 
+export interface RecentTransaction {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface TransactionVolumePoint {
+  date: string;
+  amount: number;
+  count: number;
+}
+
+export interface SettlementPerformancePoint {
+  date: string;
+  expected: number;
+  settled: number;
+  difference: number;
+}
+
 export interface DashboardOverviewResponse {
   metrics: DashboardMetrics;
   financialSummary: FinancialSummary;
@@ -59,4 +94,7 @@ export interface DashboardOverviewResponse {
   recentRuns: RecentRun[];
   exceptionsAttention: ExceptionAttention[];
   aiInsights: string | null;
+  recentTransactions: RecentTransaction[];
+  transactionVolumeChart: TransactionVolumePoint[];
+  settlementPerformanceChart: SettlementPerformancePoint[];
 }
