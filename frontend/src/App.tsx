@@ -1,45 +1,33 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { DashboardLayout } from './components/layout/DashboardLayout';
-import { PageHeader } from './components/ui/PageHeader';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Import Pages
+// Import Guest Pages
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { Dashboard } from './pages/Dashboard';
-import { Reconciliation } from './pages/Reconciliation';
-import { ReconciliationRuns } from './pages/ReconciliationRuns';
-import { ReconciliationDetail } from './pages/ReconciliationDetail';
-import ExceptionsPage from './pages/ExceptionsPage';
-import { Agent } from './pages/Agent';
-import { ApiTest } from './pages/ApiTest';
-import { Transactions } from './pages/Transactions';
-import { TransactionDetail } from './pages/TransactionDetail';
-import { Invoices } from './pages/Invoices';
-import { InvoiceDetail } from './pages/InvoiceDetail';
-import { CreateInvoice } from './pages/CreateInvoice';
-import { Payments } from './pages/Payments';
-import { PaymentDetail } from './pages/PaymentDetail';
 
-// PrivateRoute Guard
+// Import Ledgerly Pages
+import Dashboard from './pages/Dashboard';
+import TransactionsPage from './pages/Transactions';
+import RecurringPage from './pages/Recurring';
+import SubscriptionsPage from './pages/Subscriptions';
+import BudgetsPage from './pages/Budgets';
+import GoalsPage from './pages/Goals';
+import DocumentsPage from './pages/Documents';
+import RulesPage from './pages/Rules';
+import SettingsPage from './pages/Settings';
+
+// PrivateRoute Guard (Check authentication token)
 function PrivateRoute() {
   const token = localStorage.getItem('token');
   return token ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
-// PublicOnlyRoute Guard (for login, register, landing etc.)
+// PublicOnlyRoute Guard (for guest login/register screens)
 function PublicOnlyRoute() {
   const token = localStorage.getItem('token');
   return token ? <Navigate to="/dashboard" replace /> : <Outlet />;
-}
-
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div>
-      <PageHeader title={title} description={`${title} will be implemented in a future phase.`} />
-    </div>
-  );
 }
 
 const queryClient = new QueryClient();
@@ -58,25 +46,18 @@ export default function App() {
             <Route path="/register" element={<Register />} />
           </Route>
 
-          {/* Protected Dashboard Routes */}
+          {/* Protected Ledgerly Dashboard Pages */}
           <Route element={<PrivateRoute />}>
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/api-test" element={<ApiTest />} />
-              <Route path="/transactions" element={<Transactions />} />
-              <Route path="/transactions/:id" element={<TransactionDetail />} />
-              <Route path="/invoices" element={<Invoices />} />
-              <Route path="/invoices/create" element={<CreateInvoice />} />
-              <Route path="/invoices/:id" element={<InvoiceDetail />} />
-              <Route path="/payments" element={<Payments />} />
-              <Route path="/payments/:id" element={<PaymentDetail />} />
-              <Route path="/reconciliation" element={<Reconciliation />} />
-              <Route path="/reconciliation/runs" element={<ReconciliationRuns />} />
-              <Route path="/reconciliation/:id" element={<ReconciliationDetail />} />
-              <Route path="/reconciliation/runs/:id" element={<PlaceholderPage title="Run Detail" />} />
-              <Route path="/exceptions" element={<ExceptionsPage />} />
-              <Route path="/agent" element={<Agent />} />
-              <Route path="/audit-logs" element={<PlaceholderPage title="Audit Logs" />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/recurring" element={<RecurringPage />} />
+              <Route path="/subscriptions" element={<SubscriptionsPage />} />
+              <Route path="/budgets" element={<BudgetsPage />} />
+              <Route path="/goals" element={<GoalsPage />} />
+              <Route path="/documents" element={<DocumentsPage />} />
+              <Route path="/rules" element={<RulesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>
 

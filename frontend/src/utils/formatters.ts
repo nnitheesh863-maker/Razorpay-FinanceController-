@@ -1,25 +1,16 @@
-export const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-IN', {
+export const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(amount);
+    currency: 'USD'
+  }).format(value);
 };
 
-export const formatCompactCurrency = (amount: number): string => {
-  if (amount >= 10000000) {
-    return `₹${(amount / 10000000).toFixed(2)} Cr`;
-  }
-  if (amount >= 100000) {
-    return `₹${(amount / 100000).toFixed(2)} L`;
-  }
-  return formatCurrency(amount);
-};
-
-export const formatNumber = (num: number): string => {
-  return new Intl.NumberFormat('en-IN').format(num);
-};
-
-export const formatPercentage = (pct: number): string => {
-  return `${pct.toFixed(1)}%`;
+export const formatDate = (dateString: string): string => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
 };

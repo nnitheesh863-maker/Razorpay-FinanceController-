@@ -47,6 +47,15 @@
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
+
+  /* Finnova Custom Palette */
+  --color-finnova-bg: #f5f6fa;
+  --color-finnova-dark: #12131a;
+  --color-finnova-card-dark: #1c1d26;
+  --color-finnova-purple: #6254ff;
+  --color-finnova-purple-light: #8b7eff;
+  --color-finnova-purple-dark: #4d3ecc;
+  --color-finnova-selected: #2d2f3d;
 }
 
 @layer base {

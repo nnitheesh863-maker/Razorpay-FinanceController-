@@ -24,146 +24,47 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
-enum RunStatus {
-  COMPLETED
-  RUNNING
-  FAILED
-  PARTIAL
-  CANCELLED
-}
-
-model ReconciliationRun {
-  id               String      @id @default(uuid())
-  source           String
-  recordsProcessed Int         @default(0)
-  matchedRecords   Int         @default(0)
-  exceptionsFound  Int         @default(0)
-  durationMs       Int         @default(0)
-  status           RunStatus   @default(COMPLETED)
-  reconciledAmount Float       @default(0)
-  unmatchedAmount  Float       @default(0)
-  pendingAmount    Float       @default(0)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  
-  exceptions       Exception[]
-}
-
-enum ExceptionSeverity {
-  CRITICAL
-  HIGH
-  MEDIUM
-  LOW
-}
-
-enum ExceptionStatus {
-  OPEN
-  UNDER_REVIEW
-  RESOLVED
-}
-
-model Exception {
-  id                  String            @id @default(uuid())
-  type                String
-  amount              Float
-  severity            ExceptionSeverity @default(MEDIUM)
-  status              ExceptionStatus   @default(OPEN)
-  description         String?
-  reconciliationRunId String
-  reconciliationRun   ReconciliationRun @relation(fields: [reconciliationRunId], references: [id])
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-}
-
 model Transaction {
-  id            String   @id @default(uuid())
-  amount        Float
-  currency      String   @default("INR")
-  status        String   // 'SUCCESS', 'PENDING', 'FAILED', 'CANCELLED'
-  type          String   @default("PAYMENT") // 'PAYMENT', 'REFUND', 'TRANSFER', 'ADJUSTMENT', 'FEE'
-  reference     String?  // External reference (e.g. gateway txn id)
-  paymentMethod String?  // 'CARD', 'UPI', 'NETBANKING', 'WALLET', 'BANK_TRANSFER'
-  invoiceId     String?  // Linked Invoice ID
-  paymentId     String?  // Linked Payment ID
-  description   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  createdBy     String?  // User ID who created it
-}
-
-enum InvoiceStatus {
-  DRAFT
-  ISSUED
-  SENT
-  PAID
-  PARTIALLY_PAID
-  OVERDUE
-  CANCELLED
-  VOID
-}
-
-enum PaymentStatus {
-  UNPAID
-  PARTIALLY_PAID
-  PAID
-  OVERDUE
-}
-
-model Invoice {
-  id              String            @id @default(uuid())
-  invoiceNumber   String            @unique
-  referenceNumber String?
-  customerName    String
-  customerId      String?
-  issueDate       DateTime
-  dueDate         DateTime
-  currency        String            @default("INR")
-  
-  subtotal        Float             @default(0)
-  tax             Float             @default(0)
-  discount        Float             @default(0)
-  totalAmount     Float             @default(0)
-  paidAmount      Float             @default(0)
-  balanceDue      Float             @default(0)
-  
-  status          InvoiceStatus     @default(DRAFT)
-  paymentStatus   PaymentStatus     @default(UNPAID)
-  
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  
-  lineItems       InvoiceLineItem[]
-}
-
-model InvoiceLineItem {
   id          String   @id @default(uuid())
-  description String
-  quantity    Int      @default(1)
-  unitPrice   Float    @default(0)
-  tax         Float    @default(0)
-  discount    Float    @default(0)
-  lineTotal   Float    @default(0)
-  
-  invoiceId   String
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  date        String   // ISO YYYY-MM-DD
+  merchant    String
+  category    String   @default("Needs review")
+  amount      Float    // stored as positive magnitude
+  type        String   // "expense" or "income"
+  account     String   @default("Imported account")
+  tags        String   @default("[]") // stored as a JSON array string
+  receipt     Int      @default(0) // 0 = false, 1 = true
+  source      String   // "manual", "csv", "document", "google-drive"
+  fingerprint String   @unique // date|merchant|amount|account
+  createdAt   String   // ISO timestamp
 }
 
-model Payment {
-  id               String   @id @default(uuid())
-  amount           Float
-  currency         String   @default("INR")
-  paymentMethod    String   // 'CARD', 'UPI', 'NETBANKING', 'WALLET', 'BANK_TRANSFER'
-  paymentGateway   String?  // e.g. 'RAZORPAY'
-  gatewayPaymentId String?
-  status           String   // 'CAPTURED', 'PENDING', 'FAILED', 'REFUNDED'
-  customerName     String?
-  customerEmail    String?
-  paymentDate      DateTime @default(now())
-  invoiceId        String?  // Linked Invoice ID
-  transactionId    String?  // Linked Transaction ID
-  notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  createdBy        String?  // User ID who created it
+model Tag {
+  name      String   @id
+  createdAt String   // ISO timestamp
 }
 
+model Rule {
+  id        String   @id @default(uuid())
+  whenText  String
+  thenText  String
+  enabled   Int      @default(1) // 0 = disabled, 1 = enabled
+  createdAt String   // ISO timestamp
+}
+
+model Setting {
+  key       String   @id
+  value     String   // JSON string or scalar
+  updatedAt String   // ISO timestamp
+}
+
+model Document {
+  id        String   @id @default(uuid())
+  filename  String
+  mimeType  String
+  size      Int
+  objectKey String   @unique // uploads/<uuid>-<safe-filename> or drive-inbox/<safe-file-id>-<safe-filename>
+  status    String   // "queued", "stored", "review"
+  source    String   // "upload", "google-drive"
+  createdAt String   // ISO timestamp
+}

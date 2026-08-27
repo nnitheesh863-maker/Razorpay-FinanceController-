@@ -1,682 +1,451 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { useState } from 'react';
+import { useLedgerly } from '../context/LedgerlyContext';
+import type { Transaction } from '../context/LedgerlyContext';
+import { formatCurrency, formatDate } from '../utils/formatters';
 import { 
-  getTransactions, 
-  getTransactionSummary, 
-  createTransaction, 
-  updateTransaction, 
-  cancelTransaction 
-} from '../api/transactions.api';
-import type { Transaction, TransactionFilters, TransactionSummary } from '../types/transaction.types';
-import { PageHeader } from '../components/ui/PageHeader';
-import { KpiCard } from '../components/ui/KpiCard';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/Table';
-import { StatusBadge } from '../components/ui/StatusBadge';
-import type { FinanceStatus } from '../components/ui/StatusBadge';
-import { Skeleton } from '../components/ui/Skeleton';
-import { Pagination } from '../components/ui/Pagination';
-import { 
-  formatCurrency, 
-  formatCompactCurrency, 
-  formatNumber 
-} from '../utils/formatters';
-import { 
-  RefreshCw, 
-  Plus, 
   Search, 
-  X, 
-  AlertCircle, 
-  CheckCircle,
-  Eye, 
-  Edit2, 
   Trash2, 
-  ArrowLeftRight 
+  Plus, 
+  X, 
+  FileCheck, 
+  FileQuestion,
+  Tag as TagIcon
 } from 'lucide-react';
-import { format } from 'date-fns';
 
-const transactionSchema = z.object({
-  amount: z.coerce.number().positive('Amount must be greater than 0'),
-  currency: z.string().min(3).max(3).default('INR'),
-  type: z.enum(['PAYMENT', 'REFUND', 'TRANSFER', 'ADJUSTMENT', 'FEE']),
-  reference: z.string().min(1, 'Reference ID is required'),
-  paymentMethod: z.enum(['CARD', 'UPI', 'NETBANKING', 'WALLET', 'BANK_TRANSFER']),
-  description: z.string().optional()
-});
+export default function TransactionsPage() {
+  const { 
+    transactions, 
+    tags, 
+    settings, 
+    updateTransactionInline, 
+    deleteTransaction, 
+    updatePreferences 
+  } = useLedgerly();
 
-type TransactionFormValues = z.infer<typeof transactionSchema>;
+  // Search, Filters & Periods
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedAccount, setSelectedAccount] = useState('All');
 
-export function Transactions() {
-  const navigate = useNavigate();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [summary, setSummary] = useState<TransactionSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Tag Modal states
+  const [activeTxId, setActiveTxId] = useState<string | null>(null);
+  const [newTagName, setNewTagName] = useState('');
+  const [tagError, setTagError] = useState<string | null>(null);
 
-  // Filters & State
-  const [filters, setFilters] = useState<TransactionFilters>({
-    page: 1,
-    limit: 25,
-    status: '',
-    type: '',
-    paymentMethod: '',
-    search: '',
-    sortBy: 'createdAt',
-    sortOrder: 'desc'
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [totalPages, setTotalPages] = useState(1);
+  const selectedPeriod = settings?.selectedPeriod || 'all-time';
 
-  // Modals state
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [isCancelOpen, setIsCancelOpen] = useState(false);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-
-  // RBAC checks
-  const userJson = localStorage.getItem('user');
-  const user = userJson ? JSON.parse(userJson) : null;
-  const isViewer = user ? user.role === 'VIEWER' : true;
-  const canModify = !isViewer;
-  const canCancel = user ? (user.role === 'ADMIN' || user.role === 'FINANCE_MANAGER') : false;
-
-  // React Hook Forms
-  const createForm = useForm<TransactionFormValues>({
-    resolver: zodResolver(transactionSchema) as any,
-    defaultValues: {
-      amount: 0,
-      currency: 'INR',
-      type: 'PAYMENT',
-      reference: '',
-      paymentMethod: 'UPI',
-      description: ''
-    }
-  });
-
-  const editForm = useForm<TransactionFormValues>({
-    resolver: zodResolver(transactionSchema) as any
-  });
-
-  const fetchSummary = async () => {
+  const handlePeriodChange = async (period: string) => {
     try {
-      const { startDate, endDate } = filters;
-      const res = await getTransactionSummary({ startDate, endDate });
-      setSummary(res.data);
+      await updatePreferences({ selectedPeriod: period });
     } catch (err) {
-      console.error('Failed to load transaction summary:', err);
+      console.error(err);
     }
   };
 
-  const fetchTransactions = async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
-    else setRefreshing(true);
-    setError(null);
+  // 1. Date Period filtering
+  const filterTransactionsByPeriod = (txs: Transaction[], period: string) => {
+    if (period === 'all-time') return txs;
+    const now = new Date();
+    const start = new Date();
+    
+    if (period === 'this-month') {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+    } else if (period === 'last-month') {
+      start.setMonth(now.getMonth() - 1);
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      return txs.filter(t => {
+        const d = new Date(t.date);
+        return d >= start && d <= end;
+      });
+    } else if (period === 'last-3-months') {
+      start.setMonth(now.getMonth() - 3);
+    } else if (period === 'last-6-months') {
+      start.setMonth(now.getMonth() - 6);
+    } else if (period === 'this-year') {
+      start.setMonth(0);
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+    }
+    
+    return txs.filter(t => new Date(t.date) >= start);
+  };
 
+  const periodTxs = filterTransactionsByPeriod(transactions, selectedPeriod);
+
+  // 2. Search & Category/Account filters
+  const filteredTxs = periodTxs.filter(t => {
+    const matchesSearch = 
+      t.merchant.toLowerCase().includes(search.toLowerCase()) ||
+      t.category.toLowerCase().includes(search.toLowerCase()) ||
+      t.account.toLowerCase().includes(search.toLowerCase());
+
+    const matchesCategory = selectedCategory === 'All' || t.category === selectedCategory;
+    const matchesAccount = selectedAccount === 'All' || t.account === selectedAccount;
+
+    return matchesSearch && matchesCategory && matchesAccount;
+  });
+
+  // --- Inline Edits ---
+  const handleCategoryChange = async (id: string, newCategory: string) => {
     try {
-      const res = await getTransactions(filters);
-      setTransactions(res.data);
-      setTotalPages(res.pagination.totalPages);
-    } catch (err: any) {
-      setError(err.message || 'Unable to load transactions data.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      await updateTransactionInline(id, newCategory, undefined);
+    } catch (err) {
+      alert('Failed to update category.');
     }
   };
 
-  // Trigger search debounce
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setFilters(prev => ({ ...prev, search: searchTerm, page: 1 }));
-    }, 450);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
-
-  useEffect(() => {
-    fetchTransactions();
-    fetchSummary();
-  }, [
-    filters.page, 
-    filters.limit, 
-    filters.status, 
-    filters.type, 
-    filters.paymentMethod, 
-    filters.search, 
-    filters.sortBy, 
-    filters.sortOrder,
-    filters.startDate,
-    filters.endDate
-  ]);
-
-  const handleRefresh = () => {
-    fetchTransactions(true);
-    fetchSummary();
+  const handleRemoveTag = async (tx: Transaction, tagToRemove: string) => {
+    try {
+      const currentTags: string[] = JSON.parse(tx.tags || '[]');
+      const updatedTags = currentTags.filter(t => t !== tagToRemove);
+      await updateTransactionInline(tx.id, undefined, updatedTags);
+    } catch (err) {
+      alert('Failed to remove tag.');
+    }
   };
 
-  // Actions
-  const handleCreateSubmit = async (values: TransactionFormValues) => {
-    setError(null);
+  // --- Tag Editor Modal Actions ---
+  const openTagModal = (txId: string) => {
+    setActiveTxId(txId);
+    setNewTagName('');
+    setTagError(null);
+  };
+
+  const handleSaveTagModal = async () => {
+    if (!activeTxId) return;
+    const trimmed = newTagName.trim();
+    if (!trimmed) {
+      setTagError('Tag name cannot be empty.');
+      return;
+    }
+
     try {
-      const res = await createTransaction(values);
-      if (res.success) {
-        setSuccessMessage('Transaction created successfully.');
-        setIsCreateOpen(false);
-        createForm.reset();
-        handleRefresh();
+      const tx = transactions.find(t => t.id === activeTxId);
+      if (tx) {
+        const currentTags: string[] = JSON.parse(tx.tags || '[]');
+        if (!currentTags.map(t => t.toLowerCase()).includes(trimmed.toLowerCase())) {
+          currentTags.push(trimmed);
+        }
+        await updateTransactionInline(activeTxId, undefined, currentTags);
+        setActiveTxId(null);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to create transaction.');
+      setTagError(err.message || 'Failed to save tag.');
     }
   };
 
-  const handleEditOpen = (txn: Transaction) => {
-    setEditingTransaction(txn);
-    editForm.reset({
-      amount: txn.amount,
-      currency: txn.currency,
-      type: txn.type as any,
-      reference: txn.reference || '',
-      paymentMethod: (txn.paymentMethod || 'UPI') as any,
-      description: txn.description || ''
-    });
-    setIsEditOpen(true);
-  };
-
-  const handleEditSubmit = async (values: TransactionFormValues) => {
-    if (!editingTransaction) return;
-    setError(null);
-    try {
-      const res = await updateTransaction(editingTransaction.id, values);
-      if (res.success) {
-        setSuccessMessage('Transaction updated successfully.');
-        setIsEditOpen(false);
-        setEditingTransaction(null);
-        handleRefresh();
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this transaction?')) {
+      try {
+        await deleteTransaction(id);
+      } catch (err) {
+        alert('Failed to delete transaction.');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to update transaction.');
     }
   };
 
-  const handleCancelOpen = (id: string) => {
-    setCancellingId(id);
-    setIsCancelOpen(true);
-  };
-
-  const handleCancelConfirm = async () => {
-    if (!cancellingId) return;
-    setError(null);
-    try {
-      const res = await cancelTransaction(cancellingId);
-      if (res.success) {
-        setSuccessMessage('Transaction cancelled successfully.');
-        setIsCancelOpen(false);
-        setCancellingId(null);
-        handleRefresh();
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to cancel transaction.');
-    }
-  };
-
-  const clearFilters = () => {
-    setFilters({
-      page: 1,
-      limit: 25,
-      status: '',
-      type: '',
-      paymentMethod: '',
-      search: '',
-      sortBy: 'createdAt',
-      sortOrder: 'desc'
-    });
-    setSearchTerm('');
-  };
+  const activeTx = transactions.find(t => t.id === activeTxId);
+  const activeTxTags: string[] = activeTx ? JSON.parse(activeTx.tags || '[]') : [];
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Notifications Banners */}
-      {successMessage && (
-        <div className="p-3.5 bg-success-50 border border-success-100 text-success-800 rounded-xl flex items-center justify-between text-sm shadow-sm">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-success-600" />
-            <span className="font-medium">{successMessage}</span>
-          </div>
-          <button onClick={() => setSuccessMessage(null)} className="text-success-600 hover:text-success-800">
-            <X className="w-4 h-4" />
-          </button>
+    <div className="space-y-6 text-left">
+      
+      {/* Date Period Selector Card */}
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-gray-100 shadow-xs">
+        <span className="text-xs font-bold text-gray-500">Date Range Filter</span>
+        <div className="flex flex-wrap gap-1 bg-gray-100/60 p-1 rounded-xl">
+          {[
+            { label: 'All time', value: 'all-time' },
+            { label: 'This Month', value: 'this-month' },
+            { label: 'Last Month', value: 'last-month' },
+            { label: 'Last 3 Mths', value: 'last-3-months' },
+            { label: 'Last 6 Mths', value: 'last-6-months' },
+            { label: 'This Year', value: 'this-year' },
+          ].map((period) => (
+            <button
+              key={period.value}
+              onClick={() => handlePeriodChange(period.value)}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold tracking-tight transition-all cursor-pointer ${
+                selectedPeriod === period.value
+                  ? 'bg-white text-[#6558D3] shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              {period.label}
+            </button>
+          ))}
         </div>
-      )}
-
-      {error && (
-        <div className="p-3.5 bg-danger-50 border border-danger-100 text-danger-800 rounded-xl flex items-center justify-between text-sm shadow-sm">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-danger-600" />
-            <span className="font-medium">{error}</span>
-          </div>
-          <button onClick={() => setError(null)} className="text-danger-600 hover:text-danger-800">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <PageHeader
-        title="Transactions"
-        description="Monitor and manage financial movements across bank statements and payout gateways."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh} isLoading={refreshing} aria-label="Refresh list">
-              {!refreshing && <RefreshCw className="w-4 h-4" />}
-              <span>Refresh</span>
-            </Button>
-            {canModify && (
-              <Button size="sm" className="flex items-center gap-1.5" onClick={() => setIsCreateOpen(true)}>
-                <Plus className="w-4 h-4" />
-                <span>Create Transaction</span>
-              </Button>
-            )}
-          </div>
-        }
-      />
-
-      {/* Aggregated KPI Ribbon */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard 
-          title="Total Volume" 
-          value={summary ? formatCompactCurrency(summary.totalVolume) : '₹0.00'} 
-          description="Total settled currency volume" 
-          icon={ArrowLeftRight} 
-        />
-        <KpiCard 
-          title="Total Count" 
-          value={summary ? formatNumber(summary.totalTransactions) : '0'} 
-          description="All logged events" 
-          icon={ArrowLeftRight} 
-        />
-        <KpiCard 
-          title="Successful" 
-          value={summary ? formatNumber(summary.successfulCount) : '0'} 
-          description="Processed transactions" 
-          icon={CheckCircle} 
-        />
-        <KpiCard 
-          title="Pending" 
-          value={summary ? formatNumber(summary.pendingCount) : '0'} 
-          description="Awaiting settlement" 
-          icon={RefreshCw} 
-        />
-        <KpiCard 
-          title="Failed" 
-          value={summary ? formatNumber(summary.failedCount) : '0'} 
-          description="Failed or cancelled" 
-          icon={AlertCircle} 
-        />
       </div>
 
-      {/* Filters & Search Control Bar */}
-      <div className="bg-white border border-border-subtle rounded-xl p-4 flex flex-col gap-4 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="relative flex-1">
-            <span className="absolute left-3 top-2.5 text-text-muted">
-              <Search className="w-4 h-4" />
-            </span>
+      {/* Filter and Search Bar */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-4.5 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
+        
+        {/* Search */}
+        <div className="relative">
+          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block mb-1">Search Entries</label>
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
-              placeholder="Search by Transaction ID, Reference, Description..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-border-subtle rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 font-medium"
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search merchant, category, account..."
+              className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
             />
           </div>
-          
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={filters.status}
-              onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value, page: 1 }))}
-              options={[
-                { label: 'All Statuses', value: '' },
-                { label: 'Success', value: 'SUCCESS' },
-                { label: 'Pending', value: 'PENDING' },
-                { label: 'Failed', value: 'FAILED' },
-                { label: 'Cancelled', value: 'CANCELLED' }
-              ]}
-            />
+        </div>
 
-            <Select
-              value={filters.type}
-              onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value, page: 1 }))}
-              options={[
-                { label: 'All Types', value: '' },
-                { label: 'Payment', value: 'PAYMENT' },
-                { label: 'Refund', value: 'REFUND' },
-                { label: 'Transfer', value: 'TRANSFER' },
-                { label: 'Adjustment', value: 'ADJUSTMENT' },
-                { label: 'Fee', value: 'FEE' }
-              ]}
-            />
+        {/* Category Filter */}
+        <div>
+          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block mb-1">Category Filter</label>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
+          >
+            <option value="All">All Categories</option>
+            {settings?.categories.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
 
-            <Select
-              value={filters.paymentMethod}
-              onChange={(e) => setFilters(prev => ({ ...prev, paymentMethod: e.target.value, page: 1 }))}
-              options={[
-                { label: 'All Methods', value: '' },
-                { label: 'Card', value: 'CARD' },
-                { label: 'UPI', value: 'UPI' },
-                { label: 'NetBanking', value: 'NETBANKING' },
-                { label: 'Wallet', value: 'WALLET' },
-                { label: 'Bank Transfer', value: 'BANK_TRANSFER' }
-              ]}
-            />
+        {/* Account Filter */}
+        <div>
+          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block mb-1">Account Filter</label>
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
+          >
+            <option value="All">All Accounts</option>
+            {settings?.accounts.map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        </div>
 
-            {(filters.status || filters.type || filters.paymentMethod || filters.search) && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-text-muted hover:text-text-main flex items-center gap-1">
-                <X className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </Button>
-            )}
-          </div>
+      </div>
+
+      {/* Transactions Table/List Wrapper */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4">Merchant / Source</th>
+                <th className="px-6 py-4">Category (Click to edit)</th>
+                <th className="px-6 py-4">Account</th>
+                <th className="px-6 py-4">Tags</th>
+                <th className="px-6 py-4 text-center">Receipt</th>
+                <th className="px-6 py-4 text-right">Amount</th>
+                <th className="px-6 py-4 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 font-medium text-gray-700">
+              {filteredTxs.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-10 text-center text-gray-400 font-bold">
+                    No transactions found in selected period.
+                  </td>
+                </tr>
+              ) : (
+                filteredTxs.map((t) => {
+                  const txTags: string[] = JSON.parse(t.tags || '[]');
+                  return (
+                    <tr key={t.id} className="hover:bg-gray-50/40 align-middle">
+                      {/* Date */}
+                      <td className="px-6 py-4 text-[10px] font-mono text-gray-400 whitespace-nowrap">
+                        {formatDate(t.date)}
+                      </td>
+                      
+                      {/* Merchant */}
+                      <td className="px-6 py-4 font-bold text-gray-900 truncate max-w-[160px]">
+                        {t.merchant}
+                      </td>
+                      
+                      {/* Category Dropdown */}
+                      <td className="px-6 py-4">
+                        <select
+                          value={t.category}
+                          onChange={(e) => handleCategoryChange(t.id, e.target.value)}
+                          className="bg-gray-100 hover:bg-gray-200 border-none text-gray-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer focus:ring-1 focus:ring-[#6558D3]/50 focus:outline-none"
+                        >
+                          {settings?.categories.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </td>
+                      
+                      {/* Account */}
+                      <td className="px-6 py-4 text-gray-500 font-semibold whitespace-nowrap">
+                        {t.account}
+                      </td>
+                      
+                      {/* Tags inline */}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap items-center gap-1 max-w-[200px]">
+                          {txTags.map(tag => (
+                            <span key={tag} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#6558D3]/10 text-[#6558D3]">
+                              <span>{tag}</span>
+                              <button 
+                                onClick={() => handleRemoveTag(t, tag)}
+                                className="text-[#6558D3]/70 hover:text-red-600 font-bold ml-0.5 text-[9px] cursor-pointer"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          <button
+                            onClick={() => openTagModal(t.id)}
+                            className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-bold transition-colors cursor-pointer"
+                            title="Add Tag"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
+                      
+                      {/* Receipt Status */}
+                      <td className="px-6 py-4 text-center" title={t.receipt === 1 ? "Receipt Attached" : "No Receipt"}>
+                        {t.receipt === 1 ? (
+                          <FileCheck className="w-4 h-4 text-green-600 mx-auto" />
+                        ) : (
+                          <FileQuestion className="w-4 h-4 text-gray-300 mx-auto" />
+                        )}
+                      </td>
+                      
+                      {/* Signed Amount */}
+                      <td className={`px-6 py-4 text-right font-extrabold whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => handleDelete(t.id)}
+                          className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
+                          title="Delete Entry"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white border border-border-subtle rounded-xl overflow-hidden shadow-sm">
-        {loading ? (
-          <div className="p-8 space-y-4">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : transactions.length > 0 ? (
-          <div className="overflow-x-auto">
-            <Table className="w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-semibold">Transaction ID</TableHead>
-                  <TableHead className="font-semibold">Date</TableHead>
-                  <TableHead className="font-semibold">Reference</TableHead>
-                  <TableHead className="font-semibold">Type</TableHead>
-                  <TableHead className="font-semibold text-right">Amount</TableHead>
-                  <TableHead className="font-semibold">Method</TableHead>
-                  <TableHead className="font-semibold text-center">Status</TableHead>
-                  <TableHead className="font-semibold text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((txn) => (
-                  <TableRow key={txn.id} className="hover:bg-neutral-50/50 transition-colors">
-                    <TableCell className="font-semibold font-mono text-xs">{txn.id}</TableCell>
-                    <TableCell className="text-text-muted text-xs">
-                      {format(new Date(txn.createdAt), 'dd MMM yyyy HH:mm')}
-                    </TableCell>
-                    <TableCell className="text-xs text-text-main font-medium">{txn.reference || '-'}</TableCell>
-                    <TableCell className="text-xs text-text-muted font-semibold">{txn.type}</TableCell>
-                    <TableCell className="text-right text-xs font-bold text-text-main">{formatCurrency(txn.amount)}</TableCell>
-                    <TableCell className="text-xs text-text-muted font-medium">{txn.paymentMethod || '-'}</TableCell>
-                    <TableCell className="text-center">
-                      <StatusBadge status={txn.status as FinanceStatus} />
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <div className="inline-flex gap-1.5">
-                        <Button variant="ghost" size="sm" onClick={() => navigate(`/transactions/${txn.id}`)} aria-label="View Details">
-                          <Eye className="w-3.5 h-3.5 text-text-muted" />
-                        </Button>
-                        {canModify && txn.status !== 'CANCELLED' && (
-                          <Button variant="ghost" size="sm" onClick={() => handleEditOpen(txn)} aria-label="Edit Details">
-                            <Edit2 className="w-3.5 h-3.5 text-text-muted" />
-                          </Button>
-                        )}
-                        {canCancel && txn.status !== 'CANCELLED' && (
-                          <Button variant="ghost" size="sm" onClick={() => handleCancelOpen(txn.id)} aria-label="Cancel Transaction">
-                            <Trash2 className="w-3.5 h-3.5 text-danger-500" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div className="p-12 text-center text-sm text-text-muted italic">
-            No transactions found matching the selected filter criteria.
-            {(filters.status || filters.type || filters.paymentMethod || filters.search) && (
-              <div className="mt-4">
-                <Button variant="outline" size="sm" onClick={clearFilters}>
-                  Clear Filters
-                </Button>
+      {/* ======================================================== */}
+      {/* 5. ADD TAG MODAL */}
+      {activeTxId && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white border border-gray-100 rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-left">
+            
+            <div className="flex justify-between items-center bg-gray-50/50 px-6 py-4.5 border-b border-gray-100">
+              <div className="flex items-center gap-1.5">
+                <TagIcon className="w-4 h-4 text-[#6558D3]" />
+                <h2 className="text-xs font-extrabold text-gray-900">Manage Tags</h2>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Pagination Ribbon */}
-        <div className="border-t border-border-subtle p-4">
-          <Pagination
-            currentPage={filters.page ?? 1}
-            totalPages={totalPages}
-            onPageChange={(page) => setFilters(prev => ({ ...prev, page }))}
-            onPageSizeChange={(limit) => setFilters(prev => ({ ...prev, limit, page: 1 }))}
-          />
-        </div>
-      </div>
-
-      {/* CREATE TRANSACTION MODAL */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
-            <div className="flex justify-between items-center bg-neutral-50 px-6 py-4 border-b border-border-subtle">
-              <h2 className="text-base font-bold text-text-main">Create Transaction</h2>
-              <button onClick={() => setIsCreateOpen(false)} className="text-text-muted hover:text-text-main">
+              <button 
+                onClick={() => setActiveTxId(null)}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Amount"
-                  type="number"
-                  step="0.01"
-                  required
-                  error={createForm.formState.errors.amount?.message}
-                  {...createForm.register('amount')}
-                />
-                
-                <Input
-                  label="Currency"
-                  required
-                  error={createForm.formState.errors.currency?.message}
-                  {...createForm.register('currency')}
-                />
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-text-main">Transaction Type</label>
-                  <select
-                    className="bg-white border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                    {...createForm.register('type')}
-                  >
-                    <option value="PAYMENT">Payment</option>
-                    <option value="REFUND">Refund</option>
-                    <option value="TRANSFER">Transfer</option>
-                    <option value="ADJUSTMENT">Adjustment</option>
-                    <option value="FEE">Fee</option>
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-text-main">Payment Method</label>
-                  <select
-                    className="bg-white border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                    {...createForm.register('paymentMethod')}
-                  >
-                    <option value="CARD">Card</option>
-                    <option value="UPI">UPI</option>
-                    <option value="NETBANKING">NetBanking</option>
-                    <option value="WALLET">Wallet</option>
-                    <option value="BANK_TRANSFER">Bank Transfer</option>
-                  </select>
-                </div>
-              </div>
-
-              <Input
-                label="Reference ID"
-                required
-                placeholder="ref_100..."
-                error={createForm.formState.errors.reference?.message}
-                {...createForm.register('reference')}
-              />
-
-              <Input
-                label="Description"
-                placeholder="Brief transactional comments..."
-                error={createForm.formState.errors.description?.message}
-                {...createForm.register('description')}
-              />
-
-              <div className="flex justify-end gap-2 border-t border-border-subtle pt-4 mt-6">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  Record Transaction
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT TRANSACTION MODAL */}
-      {isEditOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-lg shadow-xl overflow-hidden">
-            <div className="flex justify-between items-center bg-neutral-50 px-6 py-4 border-b border-border-subtle">
-              <h2 className="text-base font-bold text-text-main">Edit Transaction</h2>
-              <button onClick={() => { setIsEditOpen(false); setEditingTransaction(null); }} className="text-text-muted hover:text-text-main">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="p-6 space-y-4">
-              {editingTransaction?.status === 'SUCCESS' && (
-                <div className="p-3 bg-warning-50 border border-warning-100 text-warning-800 rounded-lg text-xs flex gap-2">
-                  <AlertCircle className="w-4 h-4 text-warning-600 flex-shrink-0" />
-                  <span>Amount and Currency are locked because this transaction is successfully processed.</span>
+            <div className="p-6 space-y-4">
+              {tagError && (
+                <div className="p-2.5 bg-red-50 text-red-800 border border-red-100 rounded-xl text-[11px] font-semibold">
+                  {tagError}
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Amount"
-                  type="number"
-                  step="0.01"
-                  disabled={editingTransaction?.status === 'SUCCESS'}
-                  required
-                  error={editForm.formState.errors.amount?.message}
-                  {...editForm.register('amount')}
-                />
-                
-                <Input
-                  label="Currency"
-                  required
-                  disabled={editingTransaction?.status === 'SUCCESS'}
-                  error={editForm.formState.errors.currency?.message}
-                  {...editForm.register('currency')}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-text-main">Transaction Type</label>
-                  <select
-                    className="bg-white border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                    {...editForm.register('type')}
-                  >
-                    <option value="PAYMENT">Payment</option>
-                    <option value="REFUND">Refund</option>
-                    <option value="TRANSFER">Transfer</option>
-                    <option value="ADJUSTMENT">Adjustment</option>
-                    <option value="FEE">Fee</option>
-                  </select>
+              {/* Existing Tags selection list */}
+              {tags.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-extrabold text-gray-400 uppercase block tracking-wider">Select Existing Tags</span>
+                  <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto border border-gray-100 p-2.5 rounded-xl bg-gray-50/30">
+                    {tags.map(tName => {
+                      const isLinked = activeTxTags.map(t => t.toLowerCase()).includes(tName.toLowerCase());
+                      return (
+                        <button
+                          key={tName}
+                          onClick={async () => {
+                            if (!activeTxId) return;
+                            const tx = transactions.find(t => t.id === activeTxId);
+                            if (tx) {
+                              let currentTags: string[] = JSON.parse(tx.tags || '[]');
+                              if (isLinked) {
+                                currentTags = currentTags.filter(t => t.toLowerCase() !== tName.toLowerCase());
+                              } else {
+                                currentTags.push(tName);
+                              }
+                              await updateTransactionInline(activeTxId, undefined, currentTags);
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold cursor-pointer transition-colors ${
+                            isLinked 
+                              ? 'bg-[#6558D3] text-white shadow-xs' 
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          {tName}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-text-main">Payment Method</label>
-                  <select
-                    className="bg-white border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-main focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                    {...editForm.register('paymentMethod')}
+              {/* Create/Type Tag */}
+              <div>
+                <label className="text-[9px] font-extrabold text-gray-400 uppercase block mb-1 tracking-wider">Create New Tag</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="Enter tag name"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSaveTagModal();
+                      }
+                    }}
+                    className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
+                  />
+                  <button
+                    onClick={handleSaveTagModal}
+                    className="bg-[#6558D3] hover:bg-[#4d3ecc] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
-                    <option value="CARD">Card</option>
-                    <option value="UPI">UPI</option>
-                    <option value="NETBANKING">NetBanking</option>
-                    <option value="WALLET">Wallet</option>
-                    <option value="BANK_TRANSFER">Bank Transfer</option>
-                  </select>
+                    Add
+                  </button>
                 </div>
               </div>
 
-              <Input
-                label="Reference ID"
-                required
-                error={editForm.formState.errors.reference?.message}
-                {...editForm.register('reference')}
-              />
-
-              <Input
-                label="Description"
-                error={editForm.formState.errors.description?.message}
-                {...editForm.register('description')}
-              />
-
-              <div className="flex justify-end gap-2 border-t border-border-subtle pt-4 mt-6">
-                <Button type="button" variant="outline" onClick={() => { setIsEditOpen(false); setEditingTransaction(null); }}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  Save Changes
-                </Button>
+              <div className="flex justify-end border-t border-gray-100 pt-4 mt-6">
+                <button
+                  onClick={() => setActiveTxId(null)}
+                  className="px-4 py-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-500 cursor-pointer"
+                >
+                  Close
+                </button>
               </div>
-            </form>
+            </div>
+
           </div>
         </div>
       )}
 
-      {/* CANCEL VERIFICATION DIALOG */}
-      {isCancelOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white border border-border-subtle rounded-2xl w-full max-w-md shadow-xl p-6">
-            <div className="flex items-center gap-3 text-danger-600 mb-4">
-              <AlertCircle className="w-6 h-6 flex-shrink-0" />
-              <h2 className="text-base font-bold text-text-main">Cancel Transaction</h2>
-            </div>
-            
-            <p className="text-sm text-text-muted leading-relaxed">
-              Are you sure you want to cancel this transaction? This action will void the record and cannot be undone.
-            </p>
-
-            <div className="flex justify-end gap-2 mt-6">
-              <Button variant="outline" onClick={() => { setIsCancelOpen(false); setCancellingId(null); }}>
-                No, Keep It
-              </Button>
-              <Button variant="danger" onClick={handleCancelConfirm}>
-                Yes, Cancel Transaction
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
