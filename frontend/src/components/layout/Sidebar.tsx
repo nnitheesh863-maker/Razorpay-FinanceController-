@@ -4,43 +4,48 @@ import {
   ArrowRightLeft, 
   FileText, 
   CreditCard, 
+  Coins,
   CheckSquare, 
   AlertTriangle, 
-  MessageSquare, 
-  Shield 
+  Sparkles, 
+  BarChart3,
+  Upload,
+  Shield,
+  Settings
 } from 'lucide-react';
 
 const navItems = [
   { label: 'Overview', isHeader: true },
   { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
   
-  { label: 'Finance', isHeader: true },
+  { label: 'Core Ledger', isHeader: true },
   { label: 'Transactions', icon: ArrowRightLeft, href: '/transactions' },
   { label: 'Invoices', icon: FileText, href: '/invoices' },
   { label: 'Payments', icon: CreditCard, href: '/payments' },
+  { label: 'Settlements', icon: Coins, href: '/settlements' },
   
-  { label: 'Reconciliation', isHeader: true },
+  { label: 'Audit & Health', isHeader: true },
   { label: 'Reconciliation', icon: CheckSquare, href: '/reconciliation' },
   { label: 'Exceptions', icon: AlertTriangle, href: '/exceptions' },
   
-  { label: 'Agent', isHeader: true },
-  { label: 'Finance Agent', icon: MessageSquare, href: '/agent' },
+  { label: 'Intelligence', isHeader: true },
+  { label: 'AI Controller', icon: Sparkles, href: '/agent' },
+  { label: 'Reports', icon: BarChart3, href: '/reports' },
   
   { label: 'Administration', isHeader: true },
+  { label: 'Imports', icon: Upload, href: '/imports' },
   { label: 'Audit Logs', icon: Shield, href: '/audit-logs' },
-  
-  { label: 'Development', isHeader: true },
-  { label: 'API Test', icon: FileText, href: '/api-test' },
+  { label: 'Settings', icon: Settings, href: '/settings' }
 ];
 
 export function Sidebar() {
   return (
     <aside className="w-64 flex-shrink-0 border-r border-border-subtle bg-white hidden lg:flex lg:flex-col h-[calc(100vh-4rem)]">
-      <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto p-4 space-y-0.5">
         {navItems.map((item, index) => {
           if (item.isHeader) {
             return (
-              <div key={index} className="pt-4 pb-2 px-3 text-xs font-semibold text-text-muted uppercase tracking-wider">
+              <div key={index} className="pt-4 pb-1.5 px-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">
                 {item.label}
               </div>
             );
@@ -52,10 +57,10 @@ export function Sidebar() {
               key={index}
               to={item.href!}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                   isActive 
-                    ? 'bg-primary-50 text-primary-700 font-medium' 
-                    : 'text-text-main hover:bg-neutral-100 hover:text-text-main'
+                    ? 'bg-[#eff6ff] text-[#0048ff] font-extrabold shadow-2xs border-l-2 border-[#0048ff] rounded-l-none' 
+                    : 'text-text-main hover:bg-neutral-50 hover:text-text-main'
                 }`
               }
             >

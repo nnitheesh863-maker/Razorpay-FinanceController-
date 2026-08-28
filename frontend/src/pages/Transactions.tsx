@@ -1,451 +1,296 @@
 import { useState } from 'react';
-import { useLedgerly } from '../context/LedgerlyContext';
-import type { Transaction } from '../context/LedgerlyContext';
+import { useQuery } from '@tanstack/react-query';
+import { getTransactions, getTransactionById } from '../api/transactions.api';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { 
   Search, 
-  Trash2, 
-  Plus, 
-  X, 
-  FileCheck, 
-  FileQuestion,
-  Tag as TagIcon
+  ArrowRightLeft, 
+  ChevronLeft, 
+  ChevronRight, 
+  Layers, 
+  Link2,
+  FileText,
+  CreditCard,
+  Coins,
+  AlertTriangle,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 
 export default function TransactionsPage() {
-  const { 
-    transactions, 
-    tags, 
-    settings, 
-    updateTransactionInline, 
-    deleteTransaction, 
-    updatePreferences 
-  } = useLedgerly();
-
-  // Search, Filters & Periods
   const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedAccount, setSelectedAccount] = useState('All');
+  const [status, setStatus] = useState('');
+  const [type, setType] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
 
-  // Tag Modal states
-  const [activeTxId, setActiveTxId] = useState<string | null>(null);
-  const [newTagName, setNewTagName] = useState('');
-  const [tagError, setTagError] = useState<string | null>(null);
-
-  const selectedPeriod = settings?.selectedPeriod || 'all-time';
-
-  const handlePeriodChange = async (period: string) => {
-    try {
-      await updatePreferences({ selectedPeriod: period });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // 1. Date Period filtering
-  const filterTransactionsByPeriod = (txs: Transaction[], period: string) => {
-    if (period === 'all-time') return txs;
-    const now = new Date();
-    const start = new Date();
-    
-    if (period === 'this-month') {
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-    } else if (period === 'last-month') {
-      start.setMonth(now.getMonth() - 1);
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-      return txs.filter(t => {
-        const d = new Date(t.date);
-        return d >= start && d <= end;
-      });
-    } else if (period === 'last-3-months') {
-      start.setMonth(now.getMonth() - 3);
-    } else if (period === 'last-6-months') {
-      start.setMonth(now.getMonth() - 6);
-    } else if (period === 'this-year') {
-      start.setMonth(0);
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-    }
-    
-    return txs.filter(t => new Date(t.date) >= start);
-  };
-
-  const periodTxs = filterTransactionsByPeriod(transactions, selectedPeriod);
-
-  // 2. Search & Category/Account filters
-  const filteredTxs = periodTxs.filter(t => {
-    const matchesSearch = 
-      t.merchant.toLowerCase().includes(search.toLowerCase()) ||
-      t.category.toLowerCase().includes(search.toLowerCase()) ||
-      t.account.toLowerCase().includes(search.toLowerCase());
-
-    const matchesCategory = selectedCategory === 'All' || t.category === selectedCategory;
-    const matchesAccount = selectedAccount === 'All' || t.account === selectedAccount;
-
-    return matchesSearch && matchesCategory && matchesAccount;
+  // Fetch transactions list
+  const { data: txListResponse, isLoading } = useQuery({
+    queryKey: ['transactions', page, status, type, search],
+    queryFn: () => getTransactions({
+      page,
+      limit: 12,
+      status: status || undefined,
+      type: type || undefined,
+      search: search || undefined
+    })
   });
 
-  // --- Inline Edits ---
-  const handleCategoryChange = async (id: string, newCategory: string) => {
-    try {
-      await updateTransactionInline(id, newCategory, undefined);
-    } catch (err) {
-      alert('Failed to update category.');
+  // Fetch detailed transaction data for relation auditing
+  const { data: detailResponse, isLoading: isLoadingDetail } = useQuery({
+    queryKey: ['transaction-detail', selectedTxId],
+    queryFn: () => getTransactionById(selectedTxId!),
+    enabled: !!selectedTxId
+  });
+
+  const handlePrevPage = () => setPage(p => Math.max(1, p - 1));
+  const handleNextPage = () => {
+    if (txListResponse?.pagination?.totalPages && page < txListResponse.pagination.totalPages) {
+      setPage(p => p + 1);
     }
   };
-
-  const handleRemoveTag = async (tx: Transaction, tagToRemove: string) => {
-    try {
-      const currentTags: string[] = JSON.parse(tx.tags || '[]');
-      const updatedTags = currentTags.filter(t => t !== tagToRemove);
-      await updateTransactionInline(tx.id, undefined, updatedTags);
-    } catch (err) {
-      alert('Failed to remove tag.');
-    }
-  };
-
-  // --- Tag Editor Modal Actions ---
-  const openTagModal = (txId: string) => {
-    setActiveTxId(txId);
-    setNewTagName('');
-    setTagError(null);
-  };
-
-  const handleSaveTagModal = async () => {
-    if (!activeTxId) return;
-    const trimmed = newTagName.trim();
-    if (!trimmed) {
-      setTagError('Tag name cannot be empty.');
-      return;
-    }
-
-    try {
-      const tx = transactions.find(t => t.id === activeTxId);
-      if (tx) {
-        const currentTags: string[] = JSON.parse(tx.tags || '[]');
-        if (!currentTags.map(t => t.toLowerCase()).includes(trimmed.toLowerCase())) {
-          currentTags.push(trimmed);
-        }
-        await updateTransactionInline(activeTxId, undefined, currentTags);
-        setActiveTxId(null);
-      }
-    } catch (err: any) {
-      setTagError(err.message || 'Failed to save tag.');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this transaction?')) {
-      try {
-        await deleteTransaction(id);
-      } catch (err) {
-        alert('Failed to delete transaction.');
-      }
-    }
-  };
-
-  const activeTx = transactions.find(t => t.id === activeTxId);
-  const activeTxTags: string[] = activeTx ? JSON.parse(activeTx.tags || '[]') : [];
 
   return (
-    <div className="space-y-6 text-left">
-      
-      {/* Date Period Selector Card */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-gray-100 shadow-xs">
-        <span className="text-xs font-bold text-gray-500">Date Range Filter</span>
-        <div className="flex flex-wrap gap-1 bg-gray-100/60 p-1 rounded-xl">
-          {[
-            { label: 'All time', value: 'all-time' },
-            { label: 'This Month', value: 'this-month' },
-            { label: 'Last Month', value: 'last-month' },
-            { label: 'Last 3 Mths', value: 'last-3-months' },
-            { label: 'Last 6 Mths', value: 'last-6-months' },
-            { label: 'This Year', value: 'this-year' },
-          ].map((period) => (
-            <button
-              key={period.value}
-              onClick={() => handlePeriodChange(period.value)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-extrabold tracking-tight transition-all cursor-pointer ${
-                selectedPeriod === period.value
-                  ? 'bg-white text-[#6558D3] shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              {period.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-4.5 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
-        
-        {/* Search */}
-        <div className="relative">
-          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block mb-1">Search Entries</label>
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+    <div className="space-y-6 text-left flex flex-col xl:flex-row gap-6 relative min-h-[70vh]">
+      {/* List Panel */}
+      <div className="flex-1 space-y-4">
+        {/* Filters strip */}
+        <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-2xs">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
             <input
               type="text"
+              placeholder="Search reference, description..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search merchant, category, account..."
-              className="w-full bg-gray-50 border border-gray-100 rounded-xl pl-10 pr-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-xs w-full focus:outline-none focus:ring-2 focus:ring-[#0048ff]/25 focus:border-[#0048ff]"
             />
           </div>
-        </div>
 
-        {/* Category Filter */}
-        <div>
-          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block mb-1">Category Filter</label>
           <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
+            value={status}
+            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded-lg text-xs py-2 px-3 focus:outline-none focus:ring-2 focus:ring-[#0048ff]/25 cursor-pointer bg-white"
           >
-            <option value="All">All Categories</option>
-            {settings?.categories.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+            <option value="">All Statuses</option>
+            <option value="SUCCESS">SUCCESS</option>
+            <option value="PENDING">PENDING</option>
+            <option value="FAILED">FAILED</option>
+            <option value="REFUNDED">REFUNDED</option>
+          </select>
+
+          <select
+            value={type}
+            onChange={(e) => { setType(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded-lg text-xs py-2 px-3 focus:outline-none focus:ring-2 focus:ring-[#0048ff]/25 cursor-pointer bg-white"
+          >
+            <option value="">All Types</option>
+            <option value="PAYMENT">PAYMENT</option>
+            <option value="REFUND">REFUND</option>
+            <option value="TRANSFER">TRANSFER</option>
+            <option value="FEE">FEE</option>
           </select>
         </div>
 
-        {/* Account Filter */}
-        <div>
-          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block mb-1">Account Filter</label>
-          <select
-            value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
-            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
-          >
-            <option value="All">All Accounts</option>
-            {settings?.accounts.map(a => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-        </div>
-
-      </div>
-
-      {/* Transactions Table/List Wrapper */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left border-collapse min-w-[800px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Merchant / Source</th>
-                <th className="px-6 py-4">Category (Click to edit)</th>
-                <th className="px-6 py-4">Account</th>
-                <th className="px-6 py-4">Tags</th>
-                <th className="px-6 py-4 text-center">Receipt</th>
-                <th className="px-6 py-4 text-right">Amount</th>
-                <th className="px-6 py-4 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 font-medium text-gray-700">
-              {filteredTxs.length === 0 ? (
+        {/* Transactions Table */}
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-2xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100 text-left text-xs">
+              <thead className="bg-gray-50/50 text-[10px] text-gray-400 font-bold uppercase">
                 <tr>
-                  <td colSpan={8} className="px-6 py-10 text-center text-gray-400 font-bold">
-                    No transactions found in selected period.
-                  </td>
+                  <th className="py-3 px-4">Reference</th>
+                  <th>Description</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th className="text-right py-3 px-4">Auditing</th>
                 </tr>
-              ) : (
-                filteredTxs.map((t) => {
-                  const txTags: string[] = JSON.parse(t.tags || '[]');
-                  return (
-                    <tr key={t.id} className="hover:bg-gray-50/40 align-middle">
-                      {/* Date */}
-                      <td className="px-6 py-4 text-[10px] font-mono text-gray-400 whitespace-nowrap">
-                        {formatDate(t.date)}
-                      </td>
-                      
-                      {/* Merchant */}
-                      <td className="px-6 py-4 font-bold text-gray-900 truncate max-w-[160px]">
-                        {t.merchant}
-                      </td>
-                      
-                      {/* Category Dropdown */}
-                      <td className="px-6 py-4">
-                        <select
-                          value={t.category}
-                          onChange={(e) => handleCategoryChange(t.id, e.target.value)}
-                          className="bg-gray-100 hover:bg-gray-200 border-none text-gray-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold cursor-pointer focus:ring-1 focus:ring-[#6558D3]/50 focus:outline-none"
-                        >
-                          {settings?.categories.map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </td>
-                      
-                      {/* Account */}
-                      <td className="px-6 py-4 text-gray-500 font-semibold whitespace-nowrap">
-                        {t.account}
-                      </td>
-                      
-                      {/* Tags inline */}
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap items-center gap-1 max-w-[200px]">
-                          {txTags.map(tag => (
-                            <span key={tag} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#6558D3]/10 text-[#6558D3]">
-                              <span>{tag}</span>
-                              <button 
-                                onClick={() => handleRemoveTag(t, tag)}
-                                className="text-[#6558D3]/70 hover:text-red-600 font-bold ml-0.5 text-[9px] cursor-pointer"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                          <button
-                            onClick={() => openTagModal(t.id)}
-                            className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-bold transition-colors cursor-pointer"
-                            title="Add Tag"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                      
-                      {/* Receipt Status */}
-                      <td className="px-6 py-4 text-center" title={t.receipt === 1 ? "Receipt Attached" : "No Receipt"}>
-                        {t.receipt === 1 ? (
-                          <FileCheck className="w-4 h-4 text-green-600 mx-auto" />
-                        ) : (
-                          <FileQuestion className="w-4 h-4 text-gray-300 mx-auto" />
-                        )}
-                      </td>
-                      
-                      {/* Signed Amount */}
-                      <td className={`px-6 py-4 text-right font-extrabold whitespace-nowrap ${t.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
-                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-4 text-center">
-                        <button
-                          onClick={() => handleDelete(t.id)}
-                          className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
-                          title="Delete Entry"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* 5. ADD TAG MODAL */}
-      {activeTxId && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white border border-gray-100 rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-left">
-            
-            <div className="flex justify-between items-center bg-gray-50/50 px-6 py-4.5 border-b border-gray-100">
-              <div className="flex items-center gap-1.5">
-                <TagIcon className="w-4 h-4 text-[#6558D3]" />
-                <h2 className="text-xs font-extrabold text-gray-900">Manage Tags</h2>
-              </div>
-              <button 
-                onClick={() => setActiveTxId(null)}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {tagError && (
-                <div className="p-2.5 bg-red-50 text-red-800 border border-red-100 rounded-xl text-[11px] font-semibold">
-                  {tagError}
-                </div>
-              )}
-
-              {/* Existing Tags selection list */}
-              {tags.length > 0 && (
-                <div className="space-y-1.5">
-                  <span className="text-[9px] font-extrabold text-gray-400 uppercase block tracking-wider">Select Existing Tags</span>
-                  <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto border border-gray-100 p-2.5 rounded-xl bg-gray-50/30">
-                    {tags.map(tName => {
-                      const isLinked = activeTxTags.map(t => t.toLowerCase()).includes(tName.toLowerCase());
-                      return (
-                        <button
-                          key={tName}
-                          onClick={async () => {
-                            if (!activeTxId) return;
-                            const tx = transactions.find(t => t.id === activeTxId);
-                            if (tx) {
-                              let currentTags: string[] = JSON.parse(tx.tags || '[]');
-                              if (isLinked) {
-                                currentTags = currentTags.filter(t => t.toLowerCase() !== tName.toLowerCase());
-                              } else {
-                                currentTags.push(tName);
-                              }
-                              await updateTransactionInline(activeTxId, undefined, currentTags);
-                            }
-                          }}
-                          className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold cursor-pointer transition-colors ${
-                            isLinked 
-                              ? 'bg-[#6558D3] text-white shadow-xs' 
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                        >
-                          {tName}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Create/Type Tag */}
-              <div>
-                <label className="text-[9px] font-extrabold text-gray-400 uppercase block mb-1 tracking-wider">Create New Tag</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newTagName}
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    placeholder="Enter tag name"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveTagModal();
-                      }
-                    }}
-                    className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#6558D3]/20"
-                  />
-                  <button
-                    onClick={handleSaveTagModal}
-                    className="bg-[#6558D3] hover:bg-[#4d3ecc] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              </thead>
+              <tbody className="divide-y divide-gray-50 font-medium text-gray-700">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center">
+                      <div className="w-6 h-6 border-2 border-[#0048ff] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    </td>
+                  </tr>
+                ) : txListResponse?.data?.map((tx) => (
+                  <tr 
+                    key={tx.id} 
+                    onClick={() => setSelectedTxId(tx.id)}
+                    className={`hover:bg-neutral-50/70 transition-colors cursor-pointer ${selectedTxId === tx.id ? 'bg-[#eff6ff]/30 font-semibold' : ''}`}
                   >
-                    Add
-                  </button>
-                </div>
-              </div>
+                    <td className="py-3.5 px-4 font-mono text-[11px] text-gray-900">{tx.reference || 'N/A'}</td>
+                    <td className="truncate max-w-[180px]">{tx.description || 'Corporate Transaction'}</td>
+                    <td>
+                      <span className="font-bold text-neutral-500 text-[10px]">{tx.type}</span>
+                    </td>
+                    <td className={`font-bold ${tx.amount < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                      {formatCurrency(tx.amount)}
+                    </td>
+                    <td className="text-gray-400">{formatDate(tx.createdAt)}</td>
+                    <td>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                        tx.status === 'SUCCESS' || tx.status === 'CAPTURED'
+                          ? 'bg-green-50 text-green-700 border border-green-100'
+                          : 'bg-amber-50 text-amber-700 border border-amber-100'
+                      }`}>
+                        {tx.status}
+                      </span>
+                    </td>
+                    <td className="text-right py-3 px-4">
+                      <button className="text-[10px] font-bold text-[#0048ff] hover:underline cursor-pointer">
+                        Audit Details →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!isLoading && (!txListResponse?.data || txListResponse.data.length === 0) && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-gray-400">No transaction logs match selection.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-              <div className="flex justify-end border-t border-gray-100 pt-4 mt-6">
+          {/* Pagination Footer */}
+          {txListResponse?.pagination && (
+            <div className="bg-white px-4 py-3.5 border-t border-gray-100 flex items-center justify-between gap-4">
+              <span className="text-xs text-gray-400 font-semibold">
+                Page {txListResponse.pagination.page} of {txListResponse.pagination.totalPages} ({txListResponse.pagination.total} records)
+              </span>
+              <div className="flex gap-1">
                 <button
-                  onClick={() => setActiveTxId(null)}
-                  className="px-4 py-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-500 cursor-pointer"
+                  onClick={handlePrevPage}
+                  disabled={page === 1}
+                  className="p-1 border border-gray-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40 cursor-pointer"
                 >
-                  Close
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
+                </button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={page === txListResponse.pagination.totalPages}
+                  className="p-1 border border-gray-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40 cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
             </div>
+          )}
+        </div>
+      </div>
 
+      {/* Audit Detail Panel (Drawer style) */}
+      {selectedTxId && (
+        <div className="w-full xl:w-96 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm self-start flex flex-col gap-5 text-xs">
+          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+            <div>
+              <h3 className="font-bold text-gray-900 text-sm">Financial Audit Flow</h3>
+              <p className="text-[10px] text-gray-400 font-semibold">Linked record reconciliation path</p>
+            </div>
+            <button 
+              onClick={() => setSelectedTxId(null)}
+              className="p-1 rounded-lg hover:bg-neutral-50 cursor-pointer"
+            >
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
           </div>
+
+          {isLoadingDetail ? (
+            <div className="py-12 flex justify-center">
+              <div className="w-6 h-6 border-2 border-[#0048ff] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : detailResponse?.data ? (
+            <div className="space-y-6 relative">
+              {/* Vertical timeline connector */}
+              <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-gray-100" />
+
+              {/* Step 1: Transaction */}
+              <div className="flex gap-3 relative z-10">
+                <div className="w-8.5 h-8.5 rounded-full bg-[#eff6ff] border border-[#0048ff]/25 flex items-center justify-center text-[#0048ff] flex-shrink-0">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Transaction Ledger</span>
+                  <span className="font-bold text-gray-900 block mt-0.5">{detailResponse.data.reference || 'N/A'}</span>
+                  <span className="text-[11px] font-extrabold text-[#0048ff] block mt-1">{formatCurrency(detailResponse.data.amount)}</span>
+                  <span className="text-[9px] text-gray-400 block mt-0.5">Logged: {formatDate(detailResponse.data.createdAt)}</span>
+                </div>
+              </div>
+
+              {/* Step 2: Payment */}
+              <div className="flex gap-3 relative z-10">
+                <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  detailResponse.data.payment 
+                    ? 'bg-green-50 border border-green-200 text-green-600' 
+                    : 'bg-amber-50 border border-amber-200 text-amber-600'
+                }`}>
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gateway Payment</span>
+                  {detailResponse.data.payment ? (
+                    <>
+                      <span className="font-bold text-gray-900 block mt-0.5">{detailResponse.data.payment.gatewayPaymentId || 'N/A'}</span>
+                      <span className="text-[11px] font-bold text-green-600 block mt-0.5">{formatCurrency(detailResponse.data.payment.amount)}</span>
+                      <span className="text-[9px] text-gray-400 block mt-0.5">Status: {detailResponse.data.payment.status}</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-400 font-semibold italic block mt-1">No captured payment linked</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 3: Invoice */}
+              <div className="flex gap-3 relative z-10">
+                <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  detailResponse.data.invoice 
+                    ? 'bg-blue-50 border border-blue-200 text-blue-600' 
+                    : 'bg-neutral-50 border border-neutral-200 text-neutral-400'
+                }`}>
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Customer Invoice</span>
+                  {detailResponse.data.invoice ? (
+                    <>
+                      <span className="font-bold text-gray-900 block mt-0.5">{detailResponse.data.invoice.invoiceNumber}</span>
+                      <span className="text-[11px] text-gray-500 block mt-0.5">{detailResponse.data.invoice.customerName}</span>
+                      <span className="text-[10px] font-semibold text-gray-400 block mt-0.5">
+                        Total: {formatCurrency(detailResponse.data.invoice.totalAmount)} | Due: {formatCurrency(detailResponse.data.invoice.balanceDue)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-gray-400 font-semibold italic block mt-1">No invoice relation mapped</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 4: Settlement */}
+              <div className="flex gap-3 relative z-10">
+                <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  detailResponse.data.settlementId 
+                    ? 'bg-purple-50 border border-purple-200 text-purple-600' 
+                    : 'bg-neutral-50 border border-neutral-200 text-neutral-400'
+                }`}>
+                  <Coins className="w-4 h-4" />
+                </div>
+                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gateway Settlement</span>
+                  {detailResponse.data.settlementId ? (
+                    <span className="font-mono text-[10px] text-gray-900 block mt-1">{detailResponse.data.settlementId}</span>
+                  ) : (
+                    <span className="text-gray-400 font-semibold italic block mt-1">Unsettled / Pending payout</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center text-gray-400">Failed to load auditing graph.</div>
+          )}
         </div>
       )}
-
     </div>
   );
 }

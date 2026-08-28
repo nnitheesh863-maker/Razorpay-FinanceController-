@@ -47,7 +47,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       }
     });
 
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN
     });
 
@@ -86,7 +86,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, {
       expiresIn: JWT_EXPIRES_IN
     });
 
