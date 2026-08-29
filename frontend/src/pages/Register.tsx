@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, AlertCircle, ArrowRight, Lock } from 'lucide-react';
+import { ShieldCheck, AlertCircle, ArrowRight, Lock, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const registerSchema = z.object({
@@ -25,6 +25,7 @@ export function Register() {
   const navigate = useNavigate();
   const { signup } = useAuth();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const {
@@ -45,8 +46,11 @@ export function Register() {
         email: data.email,
         password: data.password,
       });
-      // 2. Navigate straight to dashboard
-      navigate('/dashboard');
+      // 2. Alert success using custom state
+      setSuccessMsg('Account created successfully! Redirecting...');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1500);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Registration failed. The email may already be in use.');
@@ -221,6 +225,21 @@ export function Register() {
           </motion.div>
         </div>
       </div>
+
+      {/* Glowing Success Alert Overlay */}
+      {successMsg && (
+        <div className="fixed inset-0 z-50 bg-[#0B1726]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-emerald-500 rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+              <CheckCircle2 className="w-9 h-9 text-emerald-500 animate-bounce" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-gray-900 tracking-tight">Success!</h3>
+              <p className="text-xs font-bold text-emerald-600 animate-pulse">{successMsg}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
