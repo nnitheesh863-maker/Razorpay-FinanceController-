@@ -142,7 +142,7 @@ export default function PaymentsPage() {
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Captured</span>
             <span className="text-sm font-extrabold text-gray-900 mt-0.5 block">
-              {summaryData?.data?.captured?.count || 0} ({formatCurrency(summaryData?.data?.captured?.sum || 0)})
+              {(summaryData?.data as any)?.captured?.count || 0} ({formatCurrency((summaryData?.data as any)?.captured?.sum || 0)})
             </span>
           </div>
         </div>
@@ -154,7 +154,7 @@ export default function PaymentsPage() {
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Pending</span>
             <span className="text-sm font-extrabold text-gray-900 mt-0.5 block">
-              {summaryData?.data?.pending?.count || 0} ({formatCurrency(summaryData?.data?.pending?.sum || 0)})
+              {(summaryData?.data as any)?.pending?.count || 0} ({formatCurrency((summaryData?.data as any)?.pending?.sum || 0)})
             </span>
           </div>
         </div>
@@ -166,7 +166,7 @@ export default function PaymentsPage() {
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Refunded</span>
             <span className="text-sm font-extrabold text-orange-600 mt-0.5 block">
-              {summaryData?.data?.refunded?.count || 0} ({formatCurrency(summaryData?.data?.refunded?.sum || 0)})
+              {(summaryData?.data as any)?.refunded?.count || 0} ({formatCurrency((summaryData?.data as any)?.refunded?.sum || 0)})
             </span>
           </div>
         </div>
@@ -178,7 +178,7 @@ export default function PaymentsPage() {
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Failed</span>
             <span className="text-sm font-extrabold text-red-600 mt-0.5 block">
-              {summaryData?.data?.failed?.count || 0} ({formatCurrency(summaryData?.data?.failed?.sum || 0)})
+              {(summaryData?.data as any)?.failed?.count || 0} ({formatCurrency((summaryData?.data as any)?.failed?.sum || 0)})
             </span>
           </div>
         </div>
@@ -356,15 +356,15 @@ export default function PaymentsPage() {
                 </div>
 
                 {/* Linked Invoice */}
-                {paymentDetail.data.invoice && (
+                {(paymentDetail.data as any).invoice && (
                   <div className="space-y-2">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Linked Invoice</span>
                     <div className="p-3 border border-gray-100 rounded-lg bg-white space-y-1.5">
                       <div className="flex justify-between">
-                        <span className="font-bold text-gray-800">{paymentDetail.data.invoice.invoiceNumber}</span>
-                        <span className="font-bold text-gray-900">{formatCurrency(paymentDetail.data.invoice.totalAmount)}</span>
+                        <span className="font-bold text-gray-800">{(paymentDetail.data as any).invoice.invoiceNumber}</span>
+                        <span className="font-bold text-gray-900">{formatCurrency((paymentDetail.data as any).invoice.totalAmount)}</span>
                       </div>
-                      <p className="text-[10px] text-gray-400">{paymentDetail.data.invoice.customerName}</p>
+                      <p className="text-[10px] text-gray-400">{(paymentDetail.data as any).invoice.customerName}</p>
                     </div>
                   </div>
                 )}

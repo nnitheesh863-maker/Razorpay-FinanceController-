@@ -4,6 +4,10 @@ export interface AuditLogFilter {
   page?: number;
   limit?: number;
   action?: string;
+  userId?: string;
+  entityType?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export const getAuditLogs = async (filters: AuditLogFilter = {}) => {

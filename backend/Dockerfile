@@ -21,10 +21,15 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+# Ensure non-root node user owns workspace files
+RUN chown -R node:node /app
+
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package*.json ./
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/prisma ./prisma
+
+USER node
 
 EXPOSE 5000
 

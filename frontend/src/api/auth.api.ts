@@ -30,3 +30,8 @@ export const getCurrentUser = async (): Promise<{ success: boolean; data: UserRe
   const response = await axiosInstance.get('/auth/me');
   return response.data;
 };
+
+export const getAdminUsersAudit = async (): Promise<{ success: boolean; data: any[] }> => {
+  const response = await axiosInstance.get('/auth/admin/users-audit');
+  return response.data;
+};

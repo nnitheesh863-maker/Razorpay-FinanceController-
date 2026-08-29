@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient as axiosInstance } from '../api/axios';
 import { 
@@ -11,33 +11,50 @@ import {
 } from 'lucide-react';
 
 export default function SettingsPage() {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const userJson = localStorage.getItem('user');
+  const user = userJson ? JSON.parse(userJson) : null;
+
+  const [name, setName] = useState('');
   const [updating, setUpdating] = useState(false);
 
   // Fetch current user details
   const { data: userProfile, refetch } = useQuery({
     queryKey: ['user-profile'],
     queryFn: async () => {
-      // Decode user profile from token context or call me endpoint
-      // We will fallback to seeded user defaults
-      return {
-        id: 'seeded-id',
-        firstName: 'Razorpay',
-        lastName: 'Finance Auditor',
-        email: 'admin@razorpay.com',
-        role: 'ADMIN'
-      };
+      try {
+        const response = await axiosInstance.get('/auth/me');
+        return response.data?.data?.user;
+      } catch (err) {
+        console.error('Failed to fetch profile settings:', err);
+        return user;
+      }
     }
   });
+
+  useEffect(() => {
+    if (userProfile) {
+      setName(userProfile.name || '');
+    }
+  }, [userProfile]);
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdating(true);
-    setTimeout(() => {
-      setUpdating(false);
+    try {
+      const activeUser = localStorage.getItem('user');
+      if (activeUser) {
+        const userObj = JSON.parse(activeUser);
+        userObj.name = name.trim();
+        localStorage.setItem('user', JSON.stringify(userObj));
+        setName(userObj.name);
+      }
       alert('Profile details updated successfully!');
-    }, 800);
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update profile settings.');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   return (
@@ -59,32 +76,20 @@ export default function SettingsPage() {
         {/* Profile Card */}
         <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-2xs md:col-span-2 space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-            <User className="w-4 h-4 text-[#0048ff]" />
+            <User className="w-4 h-4 text-[#0B1726]" />
             <h3 className="text-xs font-bold text-gray-900">User Auditor Profile</h3>
           </div>
 
           <form onSubmit={handleProfileSubmit} className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">First Name</label>
-                <input
-                  type="text"
-                  placeholder="Razorpay"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0048ff]/25 focus:border-[#0048ff]"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Last Name</label>
-                <input
-                  type="text"
-                  placeholder="Auditor"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0048ff]/25 focus:border-[#0048ff]"
-                />
-              </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Full Name</label>
+              <input
+                type="text"
+                placeholder="Neha Goel"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2F6F73]/25 focus:border-[#2F6F73]"
+              />
             </div>
 
             <div className="space-y-1">

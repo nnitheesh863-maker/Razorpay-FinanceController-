@@ -201,92 +201,95 @@ export default function TransactionsPage() {
             <div className="py-12 flex justify-center">
               <div className="w-6 h-6 border-2 border-[#0048ff] border-t-transparent rounded-full animate-spin"></div>
             </div>
-          ) : detailResponse?.data ? (
-            <div className="space-y-6 relative">
-              {/* Vertical timeline connector */}
-              <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-gray-100" />
+          ) : detailResponse?.data ? (() => {
+            const data = detailResponse.data as any;
+            return (
+              <div className="space-y-6 relative">
+                {/* Vertical timeline connector */}
+                <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-gray-100" />
 
-              {/* Step 1: Transaction */}
-              <div className="flex gap-3 relative z-10">
-                <div className="w-8.5 h-8.5 rounded-full bg-[#eff6ff] border border-[#0048ff]/25 flex items-center justify-center text-[#0048ff] flex-shrink-0">
-                  <ArrowRightLeft className="w-4 h-4" />
+                {/* Step 1: Transaction */}
+                <div className="flex gap-3 relative z-10">
+                  <div className="w-8.5 h-8.5 rounded-full bg-[#eff6ff] border border-[#0048ff]/25 flex items-center justify-center text-[#0048ff] flex-shrink-0">
+                    <ArrowRightLeft className="w-4 h-4" />
+                  </div>
+                  <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Transaction Ledger</span>
+                    <span className="font-bold text-gray-900 block mt-0.5">{data.reference || 'N/A'}</span>
+                    <span className="text-[11px] font-extrabold text-[#0048ff] block mt-1">{formatCurrency(data.amount)}</span>
+                    <span className="text-[9px] text-gray-400 block mt-0.5">Logged: {formatDate(data.createdAt)}</span>
+                  </div>
                 </div>
-                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Transaction Ledger</span>
-                  <span className="font-bold text-gray-900 block mt-0.5">{detailResponse.data.reference || 'N/A'}</span>
-                  <span className="text-[11px] font-extrabold text-[#0048ff] block mt-1">{formatCurrency(detailResponse.data.amount)}</span>
-                  <span className="text-[9px] text-gray-400 block mt-0.5">Logged: {formatDate(detailResponse.data.createdAt)}</span>
+
+                {/* Step 2: Payment */}
+                <div className="flex gap-3 relative z-10">
+                  <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    data.payment 
+                      ? 'bg-green-50 border border-green-200 text-green-600' 
+                      : 'bg-amber-50 border border-amber-200 text-amber-600'
+                  }`}>
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gateway Payment</span>
+                    {data.payment ? (
+                      <>
+                        <span className="font-bold text-gray-900 block mt-0.5">{data.payment.gatewayPaymentId || 'N/A'}</span>
+                        <span className="text-[11px] font-bold text-green-600 block mt-0.5">{formatCurrency(data.payment.amount)}</span>
+                        <span className="text-[9px] text-gray-400 block mt-0.5">Status: {data.payment.status}</span>
+                      </>
+                    ) : (
+                      <span className="text-gray-400 font-semibold italic block mt-1">No captured payment linked</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 3: Invoice */}
+                <div className="flex gap-3 relative z-10">
+                  <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    data.invoice 
+                      ? 'bg-blue-50 border border-blue-200 text-blue-600' 
+                      : 'bg-neutral-50 border border-neutral-200 text-neutral-400'
+                  }`}>
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Customer Invoice</span>
+                    {data.invoice ? (
+                      <>
+                        <span className="font-bold text-gray-900 block mt-0.5">{data.invoice.invoiceNumber}</span>
+                        <span className="text-[11px] text-gray-500 block mt-0.5">{data.invoice.customerName}</span>
+                        <span className="text-[10px] font-semibold text-gray-400 block mt-0.5">
+                          Total: {formatCurrency(data.invoice.totalAmount)} | Due: {formatCurrency(data.invoice.balanceDue)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-400 font-semibold italic block mt-1">No invoice relation mapped</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 4: Settlement */}
+                <div className="flex gap-3 relative z-10">
+                  <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    data.settlementId 
+                      ? 'bg-purple-50 border border-purple-200 text-purple-600' 
+                      : 'bg-neutral-50 border border-neutral-200 text-neutral-400'
+                  }`}>
+                    <Coins className="w-4 h-4" />
+                  </div>
+                  <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gateway Settlement</span>
+                    {data.settlementId ? (
+                      <span className="font-mono text-[10px] text-gray-900 block mt-1">{data.settlementId}</span>
+                    ) : (
+                      <span className="text-gray-400 font-semibold italic block mt-1">Unsettled / Pending payout</span>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              {/* Step 2: Payment */}
-              <div className="flex gap-3 relative z-10">
-                <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  detailResponse.data.payment 
-                    ? 'bg-green-50 border border-green-200 text-green-600' 
-                    : 'bg-amber-50 border border-amber-200 text-amber-600'
-                }`}>
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gateway Payment</span>
-                  {detailResponse.data.payment ? (
-                    <>
-                      <span className="font-bold text-gray-900 block mt-0.5">{detailResponse.data.payment.gatewayPaymentId || 'N/A'}</span>
-                      <span className="text-[11px] font-bold text-green-600 block mt-0.5">{formatCurrency(detailResponse.data.payment.amount)}</span>
-                      <span className="text-[9px] text-gray-400 block mt-0.5">Status: {detailResponse.data.payment.status}</span>
-                    </>
-                  ) : (
-                    <span className="text-gray-400 font-semibold italic block mt-1">No captured payment linked</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Step 3: Invoice */}
-              <div className="flex gap-3 relative z-10">
-                <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  detailResponse.data.invoice 
-                    ? 'bg-blue-50 border border-blue-200 text-blue-600' 
-                    : 'bg-neutral-50 border border-neutral-200 text-neutral-400'
-                }`}>
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Customer Invoice</span>
-                  {detailResponse.data.invoice ? (
-                    <>
-                      <span className="font-bold text-gray-900 block mt-0.5">{detailResponse.data.invoice.invoiceNumber}</span>
-                      <span className="text-[11px] text-gray-500 block mt-0.5">{detailResponse.data.invoice.customerName}</span>
-                      <span className="text-[10px] font-semibold text-gray-400 block mt-0.5">
-                        Total: {formatCurrency(detailResponse.data.invoice.totalAmount)} | Due: {formatCurrency(detailResponse.data.invoice.balanceDue)}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-gray-400 font-semibold italic block mt-1">No invoice relation mapped</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Step 4: Settlement */}
-              <div className="flex gap-3 relative z-10">
-                <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  detailResponse.data.settlementId 
-                    ? 'bg-purple-50 border border-purple-200 text-purple-600' 
-                    : 'bg-neutral-50 border border-neutral-200 text-neutral-400'
-                }`}>
-                  <Coins className="w-4 h-4" />
-                </div>
-                <div className="bg-neutral-50/60 p-3 rounded-xl border border-neutral-100 flex-1 text-left">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Gateway Settlement</span>
-                  {detailResponse.data.settlementId ? (
-                    <span className="font-mono text-[10px] text-gray-900 block mt-1">{detailResponse.data.settlementId}</span>
-                  ) : (
-                    <span className="text-gray-400 font-semibold italic block mt-1">Unsettled / Pending payout</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div className="py-6 text-center text-gray-400">Failed to load auditing graph.</div>
           )}
         </div>

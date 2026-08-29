@@ -85,15 +85,25 @@ enum ExceptionType {
   UNKNOWN
 }
 
+enum AuthProvider {
+  EMAIL
+  PHONE
+  BOTH
+}
+
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  role      Role     @default(VIEWER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String       @id @default(uuid())
+  name          String
+  email         String?      @unique
+  phoneNumber   String?      @unique
+  passwordHash  String?
+  authProvider  AuthProvider
+  firebaseUid   String?      @unique
+  emailVerified Boolean      @default(false)
+  phoneVerified Boolean      @default(false)
+  role          Role         @default(VIEWER)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 }
 
 model Invoice {
@@ -189,7 +199,7 @@ model Settlement {
 
 model ReconciliationRun {
   id                   String                 @id @default(uuid())
-  source               String
+  source               String                 @default("")
   target               String?
   startDate            DateTime?
   endDate              DateTime?
@@ -204,29 +214,49 @@ model ReconciliationRun {
   unmatchedAmount      Float                  @default(0)
   pendingAmount        Float                  @default(0)
   createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  updatedAt            DateTime               @updatedAt @default(now())
   records              ReconciliationRecord[]
+
+  // New Phase 7 fields
+  userId               String                 @default("")
+  totalRecords         Int                    @default(0)
+  probableMatches      Int                    @default(0)
+  exceptions           Int                    @default(0)
+  startedAt            DateTime               @default(now())
+  completedAt          DateTime?
+  matches              ReconciliationMatch[]
+  runExceptions        ReconciliationException[]
 }
 
 model ReconciliationRecord {
-  id             String            @id @default(uuid())
-  runId          String
-  run            ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  sourceRecordId String?
-  sourceType     String?
-  targetRecordId String?
-  targetType     String?
-  sourceAmount   Float
-  targetAmount   Float
-  difference     Float
-  matchStatus    MatchStatus       @default(UNMATCHED)
-  matchType      MatchType         @default(NONE)
-  confidence     Float?
-  reviewed       Boolean           @default(false)
-  notes          String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  exceptions     Exception[]
+  id                 String            @id @default(uuid())
+  runId              String
+  run                ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sourceRecordId     String?
+  sourceType         String?
+  targetRecordId     String?
+  targetType         String?
+  sourceAmount       Float
+  targetAmount       Float
+  difference         Float
+  bankRecordId       String?
+  bankAmount         Float?            @default(0)
+  bankDifference     Float?            @default(0)
+  matchStatus        MatchStatus       @default(UNMATCHED)
+  matchType          MatchType         @default(NONE)
+  confidence         Float?
+  reviewed           Boolean           @default(false)
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  exceptions         Exception[]
+
+  // Multi-source control center fields
+  invoiceRecordId    String?
+  paymentRecordId    String?
+  settlementRecordId String?
+  chainStatus        String?           @default("UNRESOLVED")
+  chainSeverity      String?           @default("LOW")
 }
 
 model Exception {
@@ -261,13 +291,18 @@ model ExceptionNote {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String?
-  userEmail  String?
-  action     String
-  details    String
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  id            String   @id @default(uuid())
+  userId        String?
+  userEmail     String?
+  action        String
+  details       String?
+  ipAddress     String?
+  entityType    String?
+  entityId      String?
+  previousValue Json?
+  newValue      Json?
+  metadata      Json?
+  createdAt     DateTime @default(now())
 }
 
 model AIAnalysis {
@@ -295,4 +330,183 @@ model Document {
   status    String
   source    String
   createdAt DateTime @default(now())
+}
+
+model DataSource {
+  id        String        @id @default(uuid())
+  userId    String
+  name      String
+  type      String
+  status    String
+  createdAt DateTime      @default(now())
+  batches   ImportBatch[]
+}
+
+model ImportBatch {
+  id             String      @id @default(uuid())
+  dataSourceId   String
+  dataSource     DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  fileName       String
+  fileType       String
+  totalRecords   Int
+  validRecords   Int
+  invalidRecords Int
+  duplicateCount Int         @default(0)
+  status         String
+  createdAt      DateTime    @default(now())
+  completedAt    DateTime?
+  processingTime Float?
+  createdBy      String?
+  records        RawRecord[]
+  financialRecords FinancialRecord[]
+}
+
+model RawRecord {
+  id            String      @id @default(uuid())
+  importBatchId String
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  rowNumber     Int
+  rawData       Json
+  status        String
+  errorMessage  String?
+  createdAt     DateTime    @default(now())
+  financialRecords FinancialRecord[]
+}
+
+enum FinancialRecordType {
+  BANK_TRANSACTION
+  INVOICE
+  PAYMENT
+  SETTLEMENT
+}
+
+model FinancialRecord {
+  id              String              @id @default(uuid())
+  userId          String
+  sourceType      String              // e.g. BANK_TRANSACTION, INVOICE
+  sourceRecordId  String
+  sourceRecord    RawRecord           @relation(fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  externalId      String
+  recordType      FinancialRecordType
+  amount          Float
+  currency        String              @default("INR")
+  transactionDate DateTime
+  description     String?
+  reference       String?
+  counterparty    String?
+  utr             String?
+  creditAmount    Float?              @default(0)
+  debitAmount     Float?              @default(0)
+  status          String              @default("PENDING")
+  metadata        Json                @default("{}")
+  mappingConfig   Json                @default("{}")
+  importBatchId   String
+  importBatch     ImportBatch         @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  createdAt       DateTime            @default(now())
+
+  leftMatches      ReconciliationMatch[]     @relation("MatchLeft")
+  rightMatches     ReconciliationMatch[]     @relation("MatchRight")
+  runExceptions    ReconciliationException[]
+
+  @@unique([userId, recordType, externalId])
+}
+
+model Integration {
+  id           String         @id @default(uuid())
+  userId       String
+  provider     String         // e.g. "RAZORPAY"
+  keyId        String         // keyIdEncrypted or secure reference
+  status       String         // e.g. "CONNECTED"
+  lastSyncedAt DateTime?
+  createdAt    DateTime       @default(now())
+  events       WebhookEvent[]
+}
+
+model WebhookEvent {
+  id               String       @id @default(uuid())
+  integrationId    String?
+  integration      Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  provider         String
+  eventType        String
+  eventId          String       @unique
+  payload          Json
+  signatureValid   Boolean
+  processingStatus String       @default("PENDING")
+  receivedAt       DateTime     @default(now())
+  processedAt      DateTime?
+}
+model ReconciliationMatch {
+  id             String            @id @default(uuid())
+  runId          String
+  run            ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  leftRecordId   String
+  leftRecord     FinancialRecord   @relation("MatchLeft", fields: [leftRecordId], references: [id], onDelete: Cascade)
+  rightRecordId  String
+  rightRecord    FinancialRecord   @relation("MatchRight", fields: [rightRecordId], references: [id], onDelete: Cascade)
+  matchType      String            // EXACT_MATCH, REFERENCE_MATCH, etc.
+  confidence     Float
+  status         String            // MATCHED, PROBABLE, etc.
+  evidence       Json
+  createdAt      DateTime          @default(now())
+}
+
+model ReconciliationException {
+  id           String            @id @default(uuid())
+  runId        String
+  run            ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  recordId     String
+  record       FinancialRecord   @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  type         String            // e.g., AMOUNT_MISMATCH
+  severity     String            // LOW, MEDIUM, HIGH, CRITICAL
+  amount       Float
+  description  String
+  status       String            // OPEN, etc.
+  createdAt    DateTime          @default(now())
+}
+
+model CashSnapshot {
+  id        String   @id @default(uuid())
+  userId    String
+  amount    Float
+  createdAt DateTime @default(now())
+}
+
+model CashForecast {
+  id            String   @id @default(uuid())
+  userId        String
+  forecastDate  DateTime
+  inflowAmount  Float
+  outflowAmount Float
+  projectedCash Float
+  createdAt     DateTime @default(now())
+}
+
+model CopilotConversation {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String           @default("Conversation")
+  createdAt DateTime         @default(now())
+  messages  CopilotMessage[]
+}
+
+model CopilotMessage {
+  id             String              @id @default(uuid())
+  conversationId String
+  conversation   CopilotConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String              // 'user' | 'assistant'
+  content        String
+  evidence       Json?               // Store structured evidence context
+  createdAt      DateTime            @default(now())
+}
+
+model ControlScoreSnapshot {
+  id                  String   @id @default(uuid())
+  userId              String
+  totalScore          Float
+  reconciliationScore Float
+  dataQualityScore    Float
+  exceptionScore      Float
+  cashVisibilityScore Float
+  approvalScore       Float
+  calculatedAt        DateTime @default(now())
 }

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { logAudit } from '../lib/audit';
 import { ExceptionStatus, ExceptionSeverity, ExceptionType } from '@prisma/client';
+import { emitToUser } from '../services/socket.service';
 
 export const getExceptions = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -126,15 +127,39 @@ export const getExceptionById = async (req: Request, res: Response): Promise<voi
 
     if (ex.invoiceId) {
       relatedInvoice = await prisma.invoice.findUnique({ where: { id: ex.invoiceId } });
+      if (!relatedInvoice) {
+        relatedInvoice = await prisma.financialRecord.findUnique({ where: { id: ex.invoiceId } });
+      }
     }
     if (ex.paymentId) {
       relatedPayment = await prisma.payment.findUnique({ where: { id: ex.paymentId } });
+      if (!relatedPayment) {
+        relatedPayment = await prisma.financialRecord.findUnique({ where: { id: ex.paymentId } });
+      }
     }
     if (ex.transactionId) {
       relatedTransaction = await prisma.transaction.findUnique({ where: { id: ex.transactionId } });
     }
     if (ex.settlementId) {
       relatedSettlement = await prisma.settlement.findUnique({ where: { id: ex.settlementId } });
+      if (!relatedSettlement) {
+        relatedSettlement = await prisma.financialRecord.findUnique({ where: { id: ex.settlementId } });
+      }
+    }
+
+    if (ex.record) {
+      if (ex.record.invoiceRecordId && !relatedInvoice) {
+        relatedInvoice = await prisma.financialRecord.findUnique({ where: { id: ex.record.invoiceRecordId } });
+      }
+      if (ex.record.paymentRecordId && !relatedPayment) {
+        relatedPayment = await prisma.financialRecord.findUnique({ where: { id: ex.record.paymentRecordId } });
+      }
+      if (ex.record.settlementRecordId && !relatedSettlement) {
+        relatedSettlement = await prisma.financialRecord.findUnique({ where: { id: ex.record.settlementRecordId } });
+      }
+      if (ex.record.bankRecordId && !relatedTransaction) {
+        relatedTransaction = await prisma.financialRecord.findUnique({ where: { id: ex.record.bankRecordId } });
+      }
     }
 
     const mapped = {
@@ -264,7 +289,7 @@ export const assignException = async (req: Request, res: Response): Promise<void
       where: { id },
       data: {
         assignedToId: user.id,
-        assignedToName: `${user.firstName} ${user.lastName}`
+        assignedToName: user.name
       }
     });
 
@@ -308,6 +333,9 @@ export const updateExceptionStatus = async (req: Request, res: Response): Promis
       { exceptionId: id, oldStatus: existing.status, newStatus: status }
     );
 
+    const userId = req.user?.id || 'anonymous';
+    emitToUser(userId, 'exception.updated', { id, status: ex.status });
+
     res.status(200).json({
       success: true,
       data: ex
@@ -340,6 +368,9 @@ export const resolveException = async (req: Request, res: Response): Promise<voi
       { exceptionId: id }
     );
 
+    const userId = req.user?.id || 'anonymous';
+    emitToUser(userId, 'exception.updated', { id, status: ex.status });
+
     res.status(200).json({
       success: true,
       data: ex
@@ -371,6 +402,9 @@ export const reopenException = async (req: Request, res: Response): Promise<void
       'EXCEPTION_REOPEN',
       { exceptionId: id }
     );
+
+    const userId = req.user?.id || 'anonymous';
+    emitToUser(userId, 'exception.updated', { id, status: ex.status });
 
     res.status(200).json({
       success: true,
@@ -407,7 +441,7 @@ export const addExceptionNote = async (req: Request, res: Response): Promise<voi
       data: {
         exceptionId: id,
         authorId: (req.user as any)?.id || 'system',
-        authorName: authorName ? `${authorName.firstName} ${authorName.lastName}` : ((req.user as any)?.email || 'System'),
+        authorName: authorName ? authorName.name : ((req.user as any)?.email || 'System'),
         content
       }
     });

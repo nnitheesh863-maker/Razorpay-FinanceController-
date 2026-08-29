@@ -5,7 +5,12 @@ export async function logAudit(
   userEmail: string | undefined,
   action: string,
   details: any,
-  ipAddress?: string
+  ipAddress?: string,
+  entityType?: string,
+  entityId?: string,
+  previousValue?: any,
+  newValue?: any,
+  metadata?: any
 ) {
   try {
     await prisma.auditLog.create({
@@ -15,6 +20,11 @@ export async function logAudit(
         action,
         details: typeof details === 'string' ? details : JSON.stringify(details),
         ipAddress: ipAddress || null,
+        entityType: entityType || null,
+        entityId: entityId || null,
+        previousValue: previousValue || null,
+        newValue: newValue || null,
+        metadata: metadata || null,
       },
     });
   } catch (error) {

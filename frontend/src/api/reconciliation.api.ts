@@ -36,3 +36,40 @@ export const runReconciliation = async (config: any): Promise<{ data: Reconcilia
   const response = await apiClient.post<{ success: boolean; data: ReconciliationRun }>('/reconciliation/run', config);
   return { data: response.data.data };
 };
+
+export const compareFiles = async (bankFile: File, invoiceFile: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append('bankFile', bankFile);
+  formData.append('invoiceFile', invoiceFile);
+  const response = await apiClient.post('/reconciliation/compare-files', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return response.data;
+};
+
+export const uploadBatch = async (files: {
+  invoiceFile?: File;
+  paymentFile?: File;
+  settlementFile?: File;
+  bankFile?: File;
+}): Promise<any> => {
+  const formData = new FormData();
+  if (files.invoiceFile) formData.append('invoiceFile', files.invoiceFile);
+  if (files.paymentFile) formData.append('paymentFile', files.paymentFile);
+  if (files.settlementFile) formData.append('settlementFile', files.settlementFile);
+  if (files.bankFile) formData.append('bankFile', files.bankFile);
+
+  const response = await apiClient.post('/imports/upload-batch', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return response.data;
+};
+
+export const getBatchChains = async (runId: string, filters: any = {}): Promise<any> => {
+  const response = await apiClient.get(`/reconciliation/batch/${runId}/chains`, { params: filters });
+  return response.data;
+};

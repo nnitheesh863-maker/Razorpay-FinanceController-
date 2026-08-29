@@ -2,7 +2,7 @@ import axios from 'axios';
 import { prisma } from '../lib/prisma';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.GROQ_API || '';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-specdec'; // Standard fast Groq model
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'; // Standard active Groq model
 
 export interface AIAnalysisResponse {
   summary: string;
@@ -91,7 +91,7 @@ export const buildQueryContext = async (question: string): Promise<any> => {
   const context: any = {};
 
   // 1. Check if the question references a specific Settlement (e.g. SET-1001)
-  const settlementMatch = normalized.match(/set-\d+|settlement\s*[0-9a-f-]+/i);
+  const settlementMatch = normalized.match(/set-[\w-]+|setl_[\w-]+|settlement\s*[\w-]+/i);
   if (settlementMatch) {
     const term = settlementMatch[0].toUpperCase();
     const settlement = await prisma.settlement.findFirst({
@@ -147,7 +147,7 @@ export const buildQueryContext = async (question: string): Promise<any> => {
   }
 
   // 2. Check if the question references an Invoice (e.g. INV-1001)
-  const invoiceMatch = normalized.match(/inv-\d+|invoice\s*[0-9a-f-]+/i);
+  const invoiceMatch = normalized.match(/inv-[\w-]+|invoice\s*[\w-]+/i);
   if (invoiceMatch) {
     const term = invoiceMatch[0].toUpperCase();
     const invoice = await prisma.invoice.findFirst({

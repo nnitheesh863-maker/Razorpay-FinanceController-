@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { X, LayoutDashboard, ArrowRightLeft, FileText, CreditCard, CheckSquare, AlertTriangle, MessageSquare, Shield } from 'lucide-react';
 
 const navItems = [
@@ -16,13 +17,23 @@ const navItems = [
   { label: 'Exceptions', icon: AlertTriangle, href: '/exceptions' },
   
   { label: 'AI', isHeader: true },
-  { label: 'Finance Agent', icon: MessageSquare, href: '/agent' },
+  { label: 'AI Controller', icon: MessageSquare, href: '/agent' },
   
   { label: 'Administration', isHeader: true },
   { label: 'Audit Logs', icon: Shield, href: '/audit-logs' },
 ];
 
 export function MobileSidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  const { user } = useAuth();
+
+  const activeNavItems = [...navItems];
+  if (user?.role === 'ADMIN') {
+    const adminHeaderIndex = activeNavItems.findIndex(item => item.label === 'Administration');
+    if (adminHeaderIndex !== -1) {
+      activeNavItems.splice(adminHeaderIndex + 1, 0, { label: 'Admin Control', icon: Shield, href: '/admin' });
+    }
+  }
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -57,7 +68,7 @@ export function MobileSidebar({ isOpen, onClose }: { isOpen: boolean, onClose: (
         </div>
         
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {navItems.map((item, index) => {
+          {activeNavItems.map((item, index) => {
             if (item.isHeader) {
               return (
                 <div key={index} className="pt-4 pb-2 px-3 text-xs font-semibold text-text-muted uppercase tracking-wider">

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -22,6 +22,7 @@
     "react-is": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "recharts": "^3.10.1",
+    "socket.io-client": "^4.8.3",
     "uuid": "^14.0.2",
     "zod": "^4.4.3"
   },

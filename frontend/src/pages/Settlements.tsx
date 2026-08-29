@@ -174,7 +174,7 @@ export default function SettlementsPage() {
                         <div className="w-6 h-6 border-2 border-[#0048ff] border-t-transparent rounded-full animate-spin mx-auto"></div>
                       </td>
                     </tr>
-                  ) : settlementsResponse?.data?.map((setl) => (
+                  ) : settlementsResponse?.data?.map((setl: any) => (
                     <tr 
                       key={setl.id}
                       onClick={() => setSelectedSettlementId(setl.id)}

@@ -5,6 +5,8 @@ export type RunStatus = 'COMPLETED' | 'RUNNING' | 'FAILED' | 'PARTIAL' | 'CANCEL
 export interface DashboardMetrics {
   recordsProcessed: number;
   matchedRecords: number;
+  partiallyMatched?: number;
+  unmatched?: number;
   matchRate: number;
   openExceptions: number;
   throughput: number;

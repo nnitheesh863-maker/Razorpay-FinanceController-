@@ -72,17 +72,40 @@ export const getDashboardOverview = async (req: Request, res: Response): Promise
       take: 5
     });
 
-    // Compute overall match rate across runs
-    const runAgg = await prisma.reconciliationRun.aggregate({
-      _sum: { recordsProcessed: true, matchedRecords: true, exceptionsFound: true, durationMs: true }
+    // Get the latest completed reconciliation run
+    const latestRun = await prisma.reconciliationRun.findFirst({
+      where: {
+        status: RunStatus.COMPLETED
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
-    const recordsProcessed = runAgg._sum.recordsProcessed || 0;
-    const matchedRecords = runAgg._sum.matchedRecords || 0;
-    const matchRate = recordsProcessed > 0 ? Number(((matchedRecords / recordsProcessed) * 100).toFixed(2)) : 100;
-    const openExceptionsCount = await prisma.exception.count({
-      where: { status: ExceptionStatus.OPEN }
-    });
+    const recordsProcessed = latestRun ? latestRun.recordsProcessed : 0;
+    const matchedRecords = latestRun ? latestRun.matchedRecords : 0; // Fully Matched
+    
+    const partiallyMatchedCount = latestRun ? await prisma.exception.count({
+      where: {
+        status: ExceptionStatus.OPEN,
+        type: { in: ['AMOUNT_MISMATCH', 'DATE_MISMATCH', 'REFERENCE_MISMATCH', 'CURRENCY_MISMATCH', 'DUPLICATE'] },
+        record: { runId: latestRun.id }
+      }
+    }) : 0;
+
+    const unmatchedCount = latestRun ? await prisma.exception.count({
+      where: {
+        status: ExceptionStatus.OPEN,
+        type: { notIn: ['AMOUNT_MISMATCH', 'DATE_MISMATCH', 'REFERENCE_MISMATCH', 'CURRENCY_MISMATCH', 'DUPLICATE'] },
+        record: { runId: latestRun.id }
+      }
+    }) : 0;
+
+    const matchRate = recordsProcessed > 0 ? Number(((matchedRecords / recordsProcessed) * 100).toFixed(2)) : 0;
+    const openExceptionsCount = latestRun ? await prisma.exception.count({
+      where: { 
+        status: ExceptionStatus.OPEN,
+        record: { runId: latestRun.id }
+      }
+    }) : 0;
 
     // 6. Exception breakdowns
     const openEx = await prisma.exception.count({ where: { status: ExceptionStatus.OPEN } });
@@ -195,10 +218,12 @@ export const getDashboardOverview = async (req: Request, res: Response): Promise
       metrics: {
         recordsProcessed,
         matchedRecords,
+        partiallyMatched: partiallyMatchedCount,
+        unmatched: unmatchedCount,
         matchRate,
         openExceptions: openExceptionsCount,
         throughput: recordsProcessed,
-        totalDurationMs: runAgg._sum.durationMs || 0,
+        totalDurationMs: latestRun ? latestRun.durationMs : 0,
         totalTransactionVolume,
         totalTransactions,
         successfulPayments: successfulPaymentsCount,

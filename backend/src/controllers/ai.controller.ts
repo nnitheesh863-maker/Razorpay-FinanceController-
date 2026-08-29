@@ -32,7 +32,7 @@ export const analyzeFinanceQuestion = async (req: Request, res: Response): Promi
 
     await logAudit(
       req.user?.id,
-      req.user?.email,
+      req.user?.email || undefined,
       'AI_QUESTION_ANALYZE',
       { question, confidence: analysis.confidence }
     );

@@ -1,316 +1,659 @@
 import { Request, Response } from 'express';
-import fs from 'fs';
 import { prisma } from '../lib/prisma';
+import xlsx from 'xlsx';
+import { emitToUser } from '../services/socket.service';
 import { logAudit } from '../lib/audit';
-import { InvoiceStatus, PaymentStatus } from '@prisma/client';
 
-// Simple CSV helper to parse key value rows
-function parseCSV(content: string): any[] {
-  const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
-  if (lines.length === 0) return [];
-
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-  const results = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split(',').map(val => val.trim().replace(/^["']|["']$/g, ''));
-    if (row.length !== headers.length) continue;
-
-    const obj: any = {};
-    headers.forEach((header, idx) => {
-      obj[header] = row[idx];
-    });
-    results.push(obj);
+const parseDateValue = (value: any): Date => {
+  if (value === null || value === undefined) {
+    return new Date(NaN);
   }
+  const num = Number(value);
+  if (!isNaN(num) && num > 30000 && num < 60000) {
+    const msInDay = 24 * 60 * 60 * 1000;
+    return new Date(Math.round((num - 25569) * msInDay));
+  }
+  return new Date(value);
+};
 
-  return results;
-}
-
-export const previewImport = async (req: Request, res: Response): Promise<void> => {
+// 1. Upload File & Create Raw Records
+export const uploadFile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { type } = req.body;
     const file = req.file;
+    const category = req.body.category || 'Bank Transactions';
 
     if (!file) {
-      res.status(400).json({ success: false, message: 'No file uploaded.' });
+      res.status(400).json({ error: 'No file uploaded.' });
       return;
     }
 
-    if (!type || !['invoices', 'payments', 'transactions', 'settlements'].includes(type)) {
-      res.status(400).json({ success: false, message: 'Invalid or missing import type.' });
+    if (file.size === 0) {
+      res.status(400).json({ error: 'Uploaded file is empty.' });
       return;
     }
 
-    const fileContent = fs.readFileSync(file.path, 'utf-8');
-    let rawRecords: any[] = [];
+    const buffer = file.buffer;
+    let parsedData: any[] = [];
+    let fileType = '';
 
-    // Parse CSV or JSON
-    if (file.originalname.endsWith('.json') || file.mimetype === 'application/json') {
+    // Magic number signature checks
+    // ZIP/XLSX: starts with PK\x03\x04 [0x50, 0x4B, 0x03, 0x04]
+    if (buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) {
+      fileType = 'XLSX';
       try {
-        rawRecords = JSON.parse(fileContent);
-      } catch {
-        res.status(400).json({ success: false, message: 'Invalid JSON file format.' });
+        const workbook = xlsx.read(buffer, { type: 'buffer' });
+        const firstSheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[firstSheetName];
+        parsedData = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+      } catch (err: any) {
+        res.status(400).json({ error: `Invalid XLSX file format: ${err.message}` });
         return;
       }
     } else {
-      rawRecords = parseCSV(fileContent);
-    }
-
-    if (!Array.isArray(rawRecords)) {
-      res.status(400).json({ success: false, message: 'Uploaded file must contain an array of records.' });
-      return;
-    }
-
-    const totalCount = rawRecords.length;
-    let duplicateCount = 0;
-    let invalidCount = 0;
-    const parsedRecords: any[] = [];
-
-    // Perform validation and duplicate check
-    for (const record of rawRecords) {
-      if (type === 'invoices') {
-        const number = record.invoiceNumber || record.invoice_number;
-        const name = record.customerName || record.customer_name;
-        const amount = Number(record.totalAmount || record.total_amount || record.amount);
-        
-        if (!number || !name || isNaN(amount)) {
-          invalidCount++;
-          continue;
+      // Decode content text
+      const content = buffer.toString('utf-8').trim();
+      
+      // JSON starts with { or [
+      if (content.startsWith('{') || content.startsWith('[')) {
+        fileType = 'JSON';
+        try {
+          const parsed = JSON.parse(content);
+          parsedData = Array.isArray(parsed) ? parsed : [parsed];
+        } catch (err: any) {
+          res.status(400).json({ error: 'Invalid JSON file format.' });
+          return;
         }
-
-        const existing = await prisma.invoice.findUnique({ where: { invoiceNumber: number } });
-        if (existing) {
-          duplicateCount++;
+      } else {
+        // Fallback: try parsing as CSV via sheetjs
+        fileType = 'CSV';
+        try {
+          const workbook = xlsx.read(buffer, { type: 'buffer' });
+          const firstSheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[firstSheetName];
+          parsedData = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+        } catch (err: any) {
+          res.status(400).json({ error: 'Invalid CSV file format.' });
+          return;
         }
-
-        parsedRecords.push({
-          invoiceNumber: number,
-          customerName: name,
-          totalAmount: amount,
-          issueDate: record.issueDate || record.issue_date || new Date().toISOString(),
-          dueDate: record.dueDate || record.due_date || new Date().toISOString(),
-          currency: record.currency || 'INR',
-          referenceNumber: record.referenceNumber || record.reference_number || null,
-          status: record.status || 'ISSUED'
-        });
-      } else if (type === 'payments') {
-        const amount = Number(record.amount);
-        const method = record.paymentMethod || record.payment_method;
-        const gatewayId = record.gatewayPaymentId || record.gateway_payment_id || record.payment_id;
-
-        if (isNaN(amount) || !method || !gatewayId) {
-          invalidCount++;
-          continue;
-        }
-
-        const existing = await prisma.payment.findUnique({ where: { gatewayPaymentId: gatewayId } });
-        if (existing) {
-          duplicateCount++;
-        }
-
-        parsedRecords.push({
-          amount,
-          paymentMethod: method,
-          gatewayPaymentId: gatewayId,
-          status: record.status || 'CAPTURED',
-          paymentDate: record.paymentDate || record.payment_date || new Date().toISOString(),
-          currency: record.currency || 'INR',
-          customerName: record.customerName || record.customer_name || null
-        });
-      } else if (type === 'transactions') {
-        const amount = Number(record.amount);
-        const txType = record.type;
-        const reference = record.reference;
-
-        if (isNaN(amount) || !txType) {
-          invalidCount++;
-          continue;
-        }
-
-        if (reference) {
-          const existing = await prisma.transaction.findUnique({ where: { reference } });
-          if (existing) {
-            duplicateCount++;
-          }
-        }
-
-        parsedRecords.push({
-          amount,
-          type: txType,
-          status: record.status || 'SUCCESS',
-          reference: reference || null,
-          paymentMethod: record.paymentMethod || record.payment_method || null,
-          description: record.description || null,
-          createdAt: record.createdAt || record.created_at || new Date().toISOString()
-        });
-      } else if (type === 'settlements') {
-        const expected = Number(record.expectedAmount || record.expected_amount || record.amount);
-        const settled = Number(record.settledAmount || record.settled_amount || record.amount);
-        const ref = record.gatewayReference || record.gateway_reference || record.settlement_id;
-
-        if (isNaN(expected) || isNaN(settled) || !ref) {
-          invalidCount++;
-          continue;
-        }
-
-        const existing = await prisma.settlement.findUnique({ where: { gatewayReference: ref } });
-        if (existing) {
-          duplicateCount++;
-        }
-
-        parsedRecords.push({
-          expectedAmount: expected,
-          settledAmount: settled,
-          fees: Number(record.fees || 0),
-          gatewayReference: ref,
-          status: record.status || 'SETTLED',
-          settlementDate: record.settlementDate || record.settlement_date || new Date().toISOString()
-        });
       }
     }
 
-    // Delete temp file after read
-    try {
-      fs.unlinkSync(file.path);
-    } catch {}
+    if (!Array.isArray(parsedData) || parsedData.length === 0) {
+      res.status(400).json({ error: 'Uploaded file contains no rows or invalid format.' });
+      return;
+    }
 
-    res.status(200).json({
-      success: true,
+    // Get or create DataSource for authenticated user
+    const userId = req.user?.id || 'anonymous';
+    let dataSource = await prisma.dataSource.findFirst({
+      where: { userId, name: category }
+    });
+
+    if (!dataSource) {
+      dataSource = await prisma.dataSource.create({
+        data: {
+          userId,
+          name: category,
+          type: category,
+          status: 'ACTIVE'
+        }
+      });
+    }
+
+    // Count valid vs invalid
+    let validRecordsCount = 0;
+    let invalidRecordsCount = 0;
+
+    const rawRecordsData = parsedData.map((row, idx) => {
+      const isValid = row && typeof row === 'object' && Object.keys(row).length > 0;
+      if (isValid) validRecordsCount++;
+      else invalidRecordsCount++;
+
+      return {
+        rowNumber: idx + 1,
+        rawData: row as any,
+        status: isValid ? 'VALID' : 'INVALID',
+        errorMessage: isValid ? null : 'Row is empty or invalid'
+      };
+    });
+
+    // Create ImportBatch
+    const batch = await prisma.importBatch.create({
       data: {
-        type,
-        totalCount,
-        validCount: parsedRecords.length,
-        duplicateCount,
-        invalidCount,
-        preview: parsedRecords.slice(0, 10) // Return top 10 items for visual grid table preview
+        dataSourceId: dataSource.id,
+        fileName: file.originalname,
+        fileType,
+        totalRecords: parsedData.length,
+        validRecords: validRecordsCount,
+        invalidRecords: invalidRecordsCount,
+        status: invalidRecordsCount === 0 ? 'SUCCESS' : (validRecordsCount > 0 ? 'PARTIAL' : 'FAILED'),
+        records: {
+          create: rawRecordsData
+        }
+      },
+      include: {
+        dataSource: true
       }
     });
-  } catch (error) {
-    console.error('Failed to preview import file:', error);
-    res.status(500).json({ success: false, message: 'Internal server error while parsing file.' });
-  }
-};
 
-export const submitImport = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { type, records } = req.body;
-
-    if (!type || !records || !Array.isArray(records) || records.length === 0) {
-      res.status(400).json({ success: false, message: 'Valid type and records array are required.' });
-      return;
-    }
-
-    let importedCount = 0;
-    let duplicateCount = 0;
-
-    await prisma.$transaction(async (tx) => {
-      for (const record of records) {
-        if (type === 'invoices') {
-          // Check duplicate
-          const existing = await tx.invoice.findUnique({ where: { invoiceNumber: record.invoiceNumber } });
-          if (existing) {
-            duplicateCount++;
-            continue;
-          }
-
-          await tx.invoice.create({
-            data: {
-              invoiceNumber: record.invoiceNumber,
-              customerName: record.customerName,
-              referenceNumber: record.referenceNumber || null,
-              issueDate: new Date(record.issueDate),
-              dueDate: new Date(record.dueDate),
-              currency: record.currency || 'INR',
-              subtotal: record.totalAmount,
-              tax: 0,
-              discount: 0,
-              totalAmount: record.totalAmount,
-              paidAmount: record.status === 'PAID' ? record.totalAmount : 0,
-              balanceDue: record.status === 'PAID' ? 0 : record.totalAmount,
-              status: record.status as InvoiceStatus || InvoiceStatus.ISSUED,
-              paymentStatus: record.status === 'PAID' ? PaymentStatus.PAID : PaymentStatus.UNPAID
-            }
-          });
-          importedCount++;
-        } else if (type === 'payments') {
-          const existing = await tx.payment.findUnique({ where: { gatewayPaymentId: record.gatewayPaymentId } });
-          if (existing) {
-            duplicateCount++;
-            continue;
-          }
-
-          await tx.payment.create({
-            data: {
-              amount: record.amount,
-              paymentMethod: record.paymentMethod,
-              gatewayPaymentId: record.gatewayPaymentId,
-              status: record.status,
-              paymentDate: new Date(record.paymentDate),
-              currency: record.currency || 'INR',
-              customerName: record.customerName || null
-            }
-          });
-          importedCount++;
-        } else if (type === 'transactions') {
-          if (record.reference) {
-            const existing = await tx.transaction.findUnique({ where: { reference: record.reference } });
-            if (existing) {
-              duplicateCount++;
-              continue;
-            }
-          }
-
-          await tx.transaction.create({
-            data: {
-              amount: record.amount,
-              type: record.type,
-              status: record.status,
-              reference: record.reference || null,
-              paymentMethod: record.paymentMethod || null,
-              description: record.description || null,
-              createdAt: new Date(record.createdAt)
-            }
-          });
-          importedCount++;
-        } else if (type === 'settlements') {
-          const existing = await tx.settlement.findUnique({ where: { gatewayReference: record.gatewayReference } });
-          if (existing) {
-            duplicateCount++;
-            continue;
-          }
-
-          await tx.settlement.create({
-            data: {
-              expectedAmount: record.expectedAmount,
-              settledAmount: record.settledAmount,
-              fees: record.fees || 0,
-              gatewayReference: record.gatewayReference,
-              status: record.status,
-              settlementDate: new Date(record.settlementDate)
-            }
-          });
-          importedCount++;
-        }
-      }
+    emitToUser(userId, 'record.imported', {
+      fileName: batch.fileName,
+      totalRecords: batch.totalRecords,
+      status: batch.status
     });
 
     await logAudit(
-      req.user?.id,
-      req.user?.email,
+      userId,
+      req.user?.email || undefined,
       'DATA_IMPORT',
-      { type, count: importedCount, duplicates: duplicateCount }
+      `Imported raw file: ${batch.fileName} with ${batch.totalRecords} records.`,
+      undefined,
+      'ImportBatch',
+      batch.id
+    );
+
+    res.status(201).json({
+      success: true,
+      batch: {
+        id: batch.id,
+        fileName: batch.fileName,
+        fileType: batch.fileType,
+        totalRecords: batch.totalRecords,
+        validRecords: batch.validRecords,
+        invalidRecords: batch.invalidRecords,
+        status: batch.status,
+        category: batch.dataSource.name,
+        createdAt: batch.createdAt
+      }
+    });
+  } catch (error: any) {
+    console.error('Upload file import failed:', error);
+    res.status(500).json({ error: error.message || 'Internal server error during import.' });
+  }
+};
+
+// 2. Get All Imports
+export const getImports = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id || 'anonymous';
+    const batches = await prisma.importBatch.findMany({
+      where: {
+        dataSource: {
+          userId
+        }
+      },
+      include: {
+        dataSource: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      imports: batches.map(b => ({
+        id: b.id,
+        fileName: b.fileName,
+        fileType: b.fileType,
+        totalRecords: b.totalRecords,
+        validRecords: b.validRecords,
+        invalidRecords: b.invalidRecords,
+        status: b.status,
+        category: b.dataSource.name,
+        createdAt: b.createdAt
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error fetching imports.' });
+  }
+};
+
+// 3. Get Import by ID
+export const getImportById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const batch = await prisma.importBatch.findUnique({
+      where: { id },
+      include: {
+        dataSource: true
+      }
+    });
+
+    if (!batch) {
+      res.status(404).json({ error: 'Import batch not found.' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      import: {
+        id: batch.id,
+        fileName: batch.fileName,
+        fileType: batch.fileType,
+        totalRecords: batch.totalRecords,
+        validRecords: batch.validRecords,
+        invalidRecords: batch.invalidRecords,
+        status: batch.status,
+        category: batch.dataSource.name,
+        createdAt: batch.createdAt
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error fetching import details.' });
+  }
+};
+
+// 4. Get Import Preview (First 50 records)
+export const getImportPreview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const records = await prisma.rawRecord.findMany({
+      where: { importBatchId: id },
+      orderBy: { rowNumber: 'asc' },
+      take: 50
+    });
+
+    res.status(200).json({
+      success: true,
+      records: records.map(r => ({
+        id: r.id,
+        rowNumber: r.rowNumber,
+        rawData: r.rawData,
+        status: r.status,
+        errorMessage: r.errorMessage,
+        createdAt: r.createdAt
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Internal server error fetching import preview.' });
+  }
+};
+
+// 5. Normalize RawRecords of an ImportBatch into FinancialRecords
+export const normalizeImportBatch = async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  try {
+    const id = req.params.id as string;
+    const { mapping, recordType, importAsNew } = req.body;
+    const userId = req.user?.id || 'anonymous';
+
+    if (!mapping || !recordType) {
+      res.status(400).json({ error: 'Missing mapping configurations or recordType.' });
+      return;
+    }
+
+    const validTypes = ['BANK_TRANSACTION', 'INVOICE', 'PAYMENT', 'SETTLEMENT'];
+    if (!validTypes.includes(recordType)) {
+      res.status(400).json({ error: `Invalid recordType: ${recordType}. Must be one of ${validTypes.join(', ')}` });
+      return;
+    }
+
+    const batch = await prisma.importBatch.findUnique({
+      where: { id },
+      include: { dataSource: true }
+    });
+
+    if (!batch) {
+      res.status(404).json({ error: 'Import batch not found.' });
+      return;
+    }
+
+    const rawRecords = await prisma.rawRecord.findMany({
+      where: { importBatchId: id },
+      orderBy: { rowNumber: 'asc' }
+    });
+
+    let processed = 0;
+    let normalized = 0;
+    let duplicates = 0;
+    let invalid = 0;
+
+    const seenExternalIds = new Set<string>();
+    const recordsToInsert: any[] = [];
+    const rawUpdates: any[] = [];
+    const errorDetails: { rowNumber: number; error: string }[] = [];
+
+    // Query existing DB external IDs to avoid db collisions
+    const existingRecords = await prisma.financialRecord.findMany({
+      where: { userId, recordType: recordType as any },
+      select: { externalId: true }
+    });
+    const dbExternalIds = new Set(existingRecords.map(r => r.externalId));
+
+    for (const record of rawRecords) {
+      processed++;
+      const rawData = record.rawData as Record<string, any>;
+
+      if (!rawData || typeof rawData !== 'object' || Object.keys(rawData).length === 0) {
+        invalid++;
+        errorDetails.push({ rowNumber: record.rowNumber, error: 'Empty or malformed row' });
+        rawUpdates.push({ id: record.id, status: 'INVALID', errorMessage: 'Row is empty or malformed' });
+        continue;
+      }
+
+      // 1. Map values dynamically based on recordType
+      let externalId = '';
+      let dateVal: any = null;
+      let amountVal = 0;
+      let currencyVal = 'INR';
+      let descriptionVal = '';
+      let referenceVal = '';
+      let counterpartyVal = '';
+      let utrVal: string | null = null;
+      let creditVal = 0;
+      let debitVal = 0;
+      let statusVal = 'PENDING';
+
+      try {
+        if (recordType === 'INVOICE') {
+          externalId = String(rawData[mapping.invoice_id] || '').trim();
+          dateVal = rawData[mapping.invoice_date];
+          amountVal = parseFloat(String(rawData[mapping.invoice_amount] || '').replace(/[^0-9.-]/g, ''));
+          currencyVal = String(rawData[mapping.currency] || 'INR').trim();
+          statusVal = String(rawData[mapping.status] || 'ISSUED').trim();
+          referenceVal = String(rawData[mapping.reference] || '').trim();
+          counterpartyVal = String(rawData[mapping.customer_name] || '').trim();
+        } else if (recordType === 'PAYMENT') {
+          externalId = String(rawData[mapping.payment_id] || '').trim();
+          dateVal = rawData[mapping.payment_date];
+          amountVal = parseFloat(String(rawData[mapping.amount] || '').replace(/[^0-9.-]/g, ''));
+          currencyVal = String(rawData[mapping.currency] || 'INR').trim();
+          statusVal = String(rawData[mapping.status] || 'CAPTURED').trim();
+          counterpartyVal = String(rawData[mapping.customer_name] || '').trim();
+          referenceVal = String(rawData[mapping.gateway_reference] || rawData[mapping.invoice_id] || '').trim();
+        } else if (recordType === 'SETTLEMENT') {
+          externalId = String(rawData[mapping.settlement_id] || '').trim();
+          dateVal = rawData[mapping.settlement_date];
+          amountVal = parseFloat(String(rawData[mapping.settled_amount] || '').replace(/[^0-9.-]/g, ''));
+          currencyVal = String(rawData[mapping.currency] || 'INR').trim();
+          statusVal = String(rawData[mapping.status] || 'PROCESSED').trim();
+          utrVal = String(rawData[mapping.utr] || '').trim();
+          referenceVal = String(rawData[mapping.payment_id] || '').trim();
+        } else if (recordType === 'BANK_TRANSACTION') {
+          externalId = String(rawData[mapping.bank_transaction_id] || '').trim();
+          dateVal = rawData[mapping.transaction_date];
+          currencyVal = String(rawData[mapping.currency] || 'INR').trim();
+          descriptionVal = String(rawData[mapping.description] || '').trim();
+          utrVal = String(rawData[mapping.utr] || '').trim();
+          referenceVal = String(rawData[mapping.reference] || '').trim();
+
+          creditVal = mapping.credit && rawData[mapping.credit] ? parseFloat(String(rawData[mapping.credit]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          debitVal = mapping.debit && rawData[mapping.debit] ? parseFloat(String(rawData[mapping.debit]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+
+          amountVal = creditVal !== 0 ? creditVal : -debitVal;
+          statusVal = 'NORMALIZED';
+        }
+      } catch (err: any) {
+        invalid++;
+        errorDetails.push({ rowNumber: record.rowNumber, error: `Value mapping error: ${err.message}` });
+        rawUpdates.push({ id: record.id, status: 'INVALID', errorMessage: `Value mapping error: ${err.message}` });
+        continue;
+      }
+
+      // 2. Perform Validations
+      if (!externalId) {
+        invalid++;
+        errorDetails.push({ rowNumber: record.rowNumber, error: 'Missing primary identifier ID' });
+        rawUpdates.push({ id: record.id, status: 'INVALID', errorMessage: 'Missing primary identifier ID' });
+        continue;
+      }
+
+      const parsedDate = parseDateValue(dateVal);
+      if (isNaN(parsedDate.getTime())) {
+        invalid++;
+        errorDetails.push({ rowNumber: record.rowNumber, error: `Invalid date format: "${dateVal}"` });
+        rawUpdates.push({ id: record.id, status: 'INVALID', errorMessage: `Invalid date format: "${dateVal}"` });
+        continue;
+      }
+
+      if (isNaN(amountVal) || (recordType !== 'BANK_TRANSACTION' && amountVal <= 0)) {
+        invalid++;
+        errorDetails.push({ rowNumber: record.rowNumber, error: `Invalid numeric amount: "${amountVal}"` });
+        rawUpdates.push({ id: record.id, status: 'INVALID', errorMessage: `Invalid numeric amount: "${amountVal}"` });
+        continue;
+      }
+
+      // 3. Deduplication checks
+      let finalExternalId = externalId;
+      if (seenExternalIds.has(externalId)) {
+        duplicates++;
+        if (importAsNew) {
+          finalExternalId = `${externalId}-DUP-FILE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        } else {
+          rawUpdates.push({ id: record.id, status: 'DUPLICATE', errorMessage: 'Duplicate row found in same file' });
+          continue;
+        }
+      }
+      seenExternalIds.add(finalExternalId);
+
+      if (dbExternalIds.has(finalExternalId)) {
+        duplicates++;
+        if (importAsNew) {
+          finalExternalId = `${finalExternalId}-DUP-DB-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        } else {
+          rawUpdates.push({ id: record.id, status: 'DUPLICATE', errorMessage: 'Duplicate record already stored in ledger' });
+          continue;
+        }
+      }
+
+      // 4. Staging insertion item
+      recordsToInsert.push({
+        userId,
+        sourceType: batch.dataSource.type,
+        sourceRecordId: record.id,
+        externalId: finalExternalId,
+        recordType: recordType as any,
+        amount: amountVal,
+        currency: currencyVal,
+        transactionDate: parsedDate,
+        description: descriptionVal || null,
+        reference: referenceVal || null,
+        counterparty: counterpartyVal || null,
+        utr: utrVal || null,
+        creditAmount: creditVal,
+        debitAmount: debitVal,
+        status: 'NORMALIZED',
+        metadata: rawData,
+        mappingConfig: mapping,
+        importBatchId: batch.id
+      });
+
+      rawUpdates.push({ id: record.id, status: 'NORMALIZED', errorMessage: null });
+      normalized++;
+    }
+
+    // 5. Database Batch Transaction Execution
+    const durationMs = Date.now() - startTime;
+    await prisma.$transaction(async (tx) => {
+      if (recordsToInsert.length > 0) {
+        await tx.financialRecord.createMany({
+          data: recordsToInsert
+        });
+      }
+
+      // Default all raw records in this batch to NORMALIZED in a single query
+      await tx.rawRecord.updateMany({
+        where: { importBatchId: batch.id },
+        data: { status: 'NORMALIZED', errorMessage: null }
+      });
+
+      // Update only the rare non-normalized (duplicate or invalid) raw records individually
+      const anomalyUpdates = rawUpdates.filter(update => update.status !== 'NORMALIZED');
+      for (const update of anomalyUpdates) {
+        await tx.rawRecord.update({
+          where: { id: update.id },
+          data: { status: update.status, errorMessage: update.errorMessage }
+        });
+      }
+
+      await tx.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: invalid === 0 ? 'NORMALIZED' : (normalized > 0 ? 'PARTIAL' : 'FAILED'),
+          validRecords: normalized,
+          invalidRecords: invalid,
+          duplicateCount: duplicates,
+          completedAt: new Date(),
+          processingTime: Number((durationMs / 1000).toFixed(2)),
+          createdBy: userId
+        }
+      });
+    }, {
+      timeout: 45000
+    });
+
+    emitToUser(userId, 'cash.updated', { cashChange: true });
+    emitToUser(userId, 'record.imported', {
+      fileName: batch.fileName,
+      totalRecords: batch.totalRecords,
+      status: 'NORMALIZED'
+    });
+
+    await logAudit(
+      userId,
+      req.user?.email || undefined,
+      'DATA_NORMALIZATION',
+      `Normalized Data Center 2.0 batch: ${batch.fileName}. Validated: ${normalized}, Duplicates: ${duplicates}, Errors: ${invalid}.`,
+      undefined,
+      'ImportBatch',
+      batch.id,
+      null,
+      { recordType, normalized, duplicates, invalid }
     );
 
     res.status(200).json({
       success: true,
-      data: {
-        type,
-        importedCount,
-        duplicateCount
+      processed,
+      normalized,
+      duplicates,
+      invalid,
+      processingTime: Number((durationMs / 1000).toFixed(2)),
+      errorDetails
+    });
+  } catch (error: any) {
+    console.error('Normalization error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error during normalization.' });
+  }
+};
+
+export const getImportStats = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id || 'anonymous';
+
+    const [
+      totalRecords,
+      invoices,
+      payments,
+      settlements,
+      bankTransactions,
+      failedImports,
+      lastImport
+    ] = await prisma.$transaction([
+      prisma.financialRecord.count({ where: { userId } }),
+      prisma.financialRecord.count({ where: { userId, recordType: 'INVOICE' } }),
+      prisma.financialRecord.count({ where: { userId, recordType: 'PAYMENT' } }),
+      prisma.financialRecord.count({ where: { userId, recordType: 'SETTLEMENT' } }),
+      prisma.financialRecord.count({ where: { userId, recordType: 'BANK_TRANSACTION' } }),
+      prisma.importBatch.count({ where: { dataSource: { userId }, status: 'FAILED' } }),
+      prisma.importBatch.findFirst({
+        where: { dataSource: { userId } },
+        orderBy: { createdAt: 'desc' },
+        include: { dataSource: true }
+      })
+    ]);
+
+    const readyForRecon = await prisma.financialRecord.count({
+      where: { userId, status: 'NORMALIZED' }
+    });
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalRecords,
+        invoices,
+        payments,
+        settlements,
+        bankTransactions,
+        failedImports,
+        readyForRecon,
+        lastImport: lastImport ? {
+          fileName: lastImport.fileName,
+          category: lastImport.dataSource.name,
+          createdAt: lastImport.createdAt,
+          status: lastImport.status
+        } : null
       }
     });
-  } catch (error) {
-    console.error('Failed to submit bulk import:', error);
-    res.status(500).json({ success: false, message: 'Internal server error while inserting bulk records.' });
+  } catch (error: any) {
+    console.error('Failed to get import stats:', error);
+    res.status(500).json({ error: error.message || 'Internal server error fetching ingestion statistics.' });
+  }
+};
+
+// 7. Multi-Source Batch Upload & Analysis trigger
+export const uploadBatch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const files = req.files as any;
+    const invoiceFile = files?.invoiceFile?.[0];
+    const paymentFile = files?.paymentFile?.[0];
+    const settlementFile = files?.settlementFile?.[0];
+    const bankFile = files?.bankFile?.[0];
+
+    if (!invoiceFile && !paymentFile && !settlementFile && !bankFile) {
+      res.status(400).json({ error: 'At least one file must be uploaded for batch analysis.' });
+      return;
+    }
+
+    const userId = req.user?.id || 'anonymous';
+    
+    // Generate unique Batch ID
+    const todayStr = new Date().toISOString().split('T')[0];
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    const batchId = `BATCH-${todayStr}-${randomNum}`;
+
+    // Create ReconciliationRun
+    const run = await prisma.reconciliationRun.create({
+      data: {
+        id: batchId,
+        userId,
+        source: 'Multi-Source',
+        target: 'Control Center',
+        status: 'RUNNING',
+        totalRecords: 0,
+        recordsProcessed: 0,
+        matchedRecords: 0,
+        exceptionsFound: 0,
+        matchRate: 0,
+        durationMs: 0
+      }
+    });
+
+    emitToUser(userId, 'reconciliation.started', { runId: run.id });
+
+    // Prepare buffers for background parsing
+    const filesData = {
+      invoiceFile: invoiceFile ? { buffer: invoiceFile.buffer, name: invoiceFile.originalname } : null,
+      paymentFile: paymentFile ? { buffer: paymentFile.buffer, name: paymentFile.originalname } : null,
+      settlementFile: settlementFile ? { buffer: settlementFile.buffer, name: settlementFile.originalname } : null,
+      bankFile: bankFile ? { buffer: bankFile.buffer, name: bankFile.originalname } : null
+    };
+
+    // Lazily require reconciliation controller to avoid circular imports
+    const { reconcileMultiSourceBatch } = require('./reconciliation.controller');
+    
+    // Run background task
+    reconcileMultiSourceBatch(run.id, userId, filesData).catch((err: any) => {
+      console.error('Background batch reconciliation failed:', err);
+    });
+
+    res.status(200).json({
+      success: true,
+      batchId: run.id,
+      run
+    });
+  } catch (error: any) {
+    console.error('Batch upload error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error starting batch analysis.' });
   }
 };

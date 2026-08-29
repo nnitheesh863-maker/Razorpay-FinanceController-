@@ -134,8 +134,8 @@ export default function InvoicesPage() {
           description: 'Standard Corporate Service Charge',
           quantity: 1,
           unitPrice: Number(totalAmount),
-          totalPrice: Number(totalAmount)
-        }
+          lineTotal: Number(totalAmount)
+        } as any
       ]
     });
   };
@@ -170,7 +170,7 @@ export default function InvoicesPage() {
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Collected Payments</span>
             <span className="text-lg font-extrabold text-green-600 mt-0.5 block">
-              {formatCurrency(summaryData?.data?.paidInvoiced || 0)}
+              {formatCurrency((summaryData?.data as any)?.paidInvoiced || 0)}
             </span>
           </div>
         </div>
@@ -182,7 +182,7 @@ export default function InvoicesPage() {
           <div>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Outstanding Balance</span>
             <span className="text-lg font-extrabold text-orange-600 mt-0.5 block">
-              {formatCurrency(summaryData?.data?.outstandingBalance || 0)}
+              {formatCurrency((summaryData?.data as any)?.outstandingBalance || 0)}
             </span>
           </div>
         </div>

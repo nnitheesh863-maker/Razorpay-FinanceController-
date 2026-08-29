@@ -1,10 +1,16 @@
 import 'dotenv/config';
-import { Role, RunStatus, ExceptionSeverity, ExceptionStatus, InvoiceStatus, PaymentStatus } from '@prisma/client';
+import { Role, RunStatus, ExceptionSeverity, ExceptionStatus, InvoiceStatus, PaymentStatus, AuthProvider } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
 import bcrypt from 'bcryptjs';
 
 async function main() {
   console.log('Clearing existing data...');
+  await prisma.reconciliationMatch.deleteMany({});
+  await prisma.reconciliationException.deleteMany({});
+  await prisma.financialRecord.deleteMany({});
+  await prisma.rawRecord.deleteMany({});
+  await prisma.importBatch.deleteMany({});
+  await prisma.dataSource.deleteMany({});
   await prisma.exception.deleteMany({});
   await prisma.reconciliationRecord.deleteMany({});
   await prisma.reconciliationRun.deleteMany({});
@@ -12,6 +18,7 @@ async function main() {
   await prisma.payment.deleteMany({});
   await prisma.invoiceLineItem.deleteMany({});
   await prisma.invoice.deleteMany({});
+  await prisma.settlement.deleteMany({});
   await prisma.user.deleteMany({});
 
   console.log('Seeding users...');
@@ -21,9 +28,9 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       email: 'admin@razorpay.com',
-      password: hashedPassword,
-      firstName: 'Aditya',
-      lastName: 'Sharma',
+      passwordHash: hashedPassword,
+      name: 'Aditya Sharma',
+      authProvider: AuthProvider.EMAIL,
       role: Role.ADMIN,
     },
   });
@@ -31,9 +38,9 @@ async function main() {
   const manager = await prisma.user.create({
     data: {
       email: 'manager@razorpay.com',
-      password: hashedPassword,
-      firstName: 'Neha',
-      lastName: 'Goel',
+      passwordHash: hashedPassword,
+      name: 'Neha Goel',
+      authProvider: AuthProvider.EMAIL,
       role: Role.FINANCE_MANAGER,
     },
   });
@@ -443,6 +450,553 @@ async function main() {
         description: `Reversal credit to customer card ref_rev_${200000 + i}`,
         createdAt: date,
         createdBy: admin.id
+      }
+    });
+  }
+
+  // --- CATEGORY 7: THREE-WAY RECONCILIATION SYNTHETIC RECORDS (100 TOTAL) ---
+  console.log('Seeding Phase 3: Three-way reconciliation records...');
+
+  // Create default DataSource and ImportBatch for stages
+  const bankDataSource = await prisma.dataSource.upsert({
+    where: { id: 'ds-synthetic-bank' },
+    update: {},
+    create: {
+      id: 'ds-synthetic-bank',
+      userId: admin.id,
+      name: 'Bank Payouts Import Seed',
+      type: 'BANK_TRANSACTION',
+      status: 'ACTIVE'
+    }
+  });
+
+  const bankImportBatch = await prisma.importBatch.create({
+    data: {
+      dataSourceId: bankDataSource.id,
+      fileName: 'synthetic_bank_payouts_aug2026.xlsx',
+      fileType: 'XLSX',
+      totalRecords: 100,
+      validRecords: 100,
+      invalidRecords: 0,
+      status: 'NORMALIZED'
+    }
+  });
+
+  const settlementDataSource = await prisma.dataSource.upsert({
+    where: { id: 'ds-synthetic-settlements' },
+    update: {},
+    create: {
+      id: 'ds-synthetic-settlements',
+      userId: admin.id,
+      name: 'Razorpay API Integration',
+      type: 'RAZORPAY',
+      status: 'ACTIVE'
+    }
+  });
+
+  const settlementImportBatch = await prisma.importBatch.create({
+    data: {
+      dataSourceId: settlementDataSource.id,
+      fileName: 'Razorpay API Pull (Test Mode)',
+      fileType: 'JSON',
+      totalRecords: 100,
+      validRecords: 100,
+      invalidRecords: 0,
+      status: 'NORMALIZED'
+    }
+  });
+
+  const baseDate = new Date('2026-08-20T10:00:00Z');
+
+  // Helper to generate dates relative to base date
+  const shiftDays = (date: Date, days: number): Date => {
+    const d = new Date(date);
+    d.setDate(date.getDate() + days);
+    return d;
+  };
+
+  // 1. 70 Clean Three-way Matches
+  for (let i = 1; i <= 70; i++) {
+    const invoiceNum = `INV-3WAY-CLEAN-${1000 + i}`;
+    const utrVal = `UTR-CLEAN-${1000 + i}`;
+    const grossAmount = 50000;
+    const fees = 1000;
+    const tax = 180;
+    const expectedSettlement = 48820;
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        invoiceNumber: invoiceNum,
+        referenceNumber: `REF-CLEAN-${1000 + i}`,
+        customerName: `CleanClient-${i}`,
+        issueDate: baseDate,
+        dueDate: shiftDays(baseDate, 30),
+        subtotal: 42372.88,
+        tax: 7627.12,
+        totalAmount: grossAmount,
+        paidAmount: grossAmount,
+        balanceDue: 0,
+        status: InvoiceStatus.PAID,
+        paymentStatus: PaymentStatus.PAID
+      }
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        amount: grossAmount,
+        currency: 'INR',
+        paymentMethod: 'UPI',
+        paymentGateway: 'RAZORPAY',
+        gatewayPaymentId: `pay_clean_${1000 + i}`,
+        status: 'CAPTURED',
+        customerName: `CleanClient-${i}`,
+        paymentDate: baseDate,
+        invoiceId: invoice.id
+      }
+    });
+
+    const settlement = await prisma.settlement.create({
+      data: {
+        settlementDate: shiftDays(baseDate, 1),
+        expectedAmount: expectedSettlement,
+        settledAmount: expectedSettlement,
+        fees: fees + tax,
+        currency: 'INR',
+        gatewayReference: utrVal,
+        status: 'PROCESSED'
+      }
+    });
+
+    const txn = await prisma.transaction.create({
+      data: {
+        amount: grossAmount,
+        currency: 'INR',
+        status: 'SUCCESS',
+        type: 'PAYMENT',
+        reference: `pay_clean_${1000 + i}`,
+        paymentId: payment.id,
+        settlementId: settlement.id
+      }
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { transactionId: txn.id }
+    });
+
+    // Create raw record stage
+    const rawBank = await prisma.rawRecord.create({
+      data: {
+        importBatchId: bankImportBatch.id,
+        rowNumber: i,
+        rawData: {
+          transaction_id: `BANK-TX-CLEAN-${1000 + i}`,
+          date: shiftDays(baseDate, 1).toISOString(),
+          description: `RAZORPAY SETTLEMENT ${utrVal}`,
+          credit: expectedSettlement,
+          debit: 0,
+          utr: utrVal
+        },
+        status: 'NORMALIZED'
+      }
+    });
+
+    // Create normalized bank transaction record
+    await prisma.financialRecord.create({
+      data: {
+        userId: admin.id,
+        sourceType: 'BANK_TRANSACTION',
+        sourceRecordId: rawBank.id,
+        externalId: `BANK-TX-CLEAN-${1000 + i}`,
+        recordType: 'BANK_TRANSACTION',
+        amount: expectedSettlement,
+        currency: 'INR',
+        transactionDate: shiftDays(baseDate, 1),
+        description: `RAZORPAY SETTLEMENT ${utrVal}`,
+        reference: utrVal,
+        utr: utrVal,
+        creditAmount: expectedSettlement,
+        debitAmount: 0,
+        status: 'NORMALIZED',
+        importBatchId: bankImportBatch.id
+      }
+    });
+  }
+
+  // 2. 10 Timing Differences (August 28 to August 29)
+  for (let i = 1; i <= 10; i++) {
+    const invoiceNum = `INV-3WAY-TIME-${1000 + i}`;
+    const utrVal = `UTR-TIME-${1000 + i}`;
+    const grossAmount = 10000;
+    const fees = 200;
+    const tax = 36;
+    const expectedSettlement = 9764;
+    const settlementDate = shiftDays(baseDate, 5);
+    const bankReceivedDate = shiftDays(baseDate, 6); // 1 day difference
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        invoiceNumber: invoiceNum,
+        referenceNumber: `REF-TIME-${1000 + i}`,
+        customerName: `TimeClient-${i}`,
+        issueDate: baseDate,
+        dueDate: shiftDays(baseDate, 30),
+        subtotal: 8474.58,
+        tax: 1525.42,
+        totalAmount: grossAmount,
+        paidAmount: grossAmount,
+        balanceDue: 0,
+        status: InvoiceStatus.PAID,
+        paymentStatus: PaymentStatus.PAID
+      }
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        amount: grossAmount,
+        currency: 'INR',
+        paymentMethod: 'CARD',
+        paymentGateway: 'RAZORPAY',
+        gatewayPaymentId: `pay_time_${1000 + i}`,
+        status: 'CAPTURED',
+        customerName: `TimeClient-${i}`,
+        paymentDate: baseDate,
+        invoiceId: invoice.id
+      }
+    });
+
+    const settlement = await prisma.settlement.create({
+      data: {
+        settlementDate: settlementDate,
+        expectedAmount: expectedSettlement,
+        settledAmount: expectedSettlement,
+        fees: fees + tax,
+        currency: 'INR',
+        gatewayReference: utrVal,
+        status: 'PROCESSED'
+      }
+    });
+
+    const txn = await prisma.transaction.create({
+      data: {
+        amount: grossAmount,
+        currency: 'INR',
+        status: 'SUCCESS',
+        type: 'PAYMENT',
+        reference: `pay_time_${1000 + i}`,
+        paymentId: payment.id,
+        settlementId: settlement.id
+      }
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { transactionId: txn.id }
+    });
+
+    const rawBank = await prisma.rawRecord.create({
+      data: {
+        importBatchId: bankImportBatch.id,
+        rowNumber: 70 + i,
+        rawData: {
+          transaction_id: `BANK-TX-TIME-${1000 + i}`,
+          date: bankReceivedDate.toISOString(),
+          description: `RAZORPAY SETTLEMENT ${utrVal}`,
+          credit: expectedSettlement,
+          debit: 0,
+          utr: utrVal
+        },
+        status: 'NORMALIZED'
+      }
+    });
+
+    await prisma.financialRecord.create({
+      data: {
+        userId: admin.id,
+        sourceType: 'BANK_TRANSACTION',
+        sourceRecordId: rawBank.id,
+        externalId: `BANK-TX-TIME-${1000 + i}`,
+        recordType: 'BANK_TRANSACTION',
+        amount: expectedSettlement,
+        currency: 'INR',
+        transactionDate: bankReceivedDate,
+        description: `RAZORPAY SETTLEMENT ${utrVal}`,
+        reference: utrVal,
+        utr: utrVal,
+        creditAmount: expectedSettlement,
+        debitAmount: 0,
+        status: 'NORMALIZED',
+        importBatchId: bankImportBatch.id
+      }
+    });
+  }
+
+  // 3. 5 Amount Differences
+  for (let i = 1; i <= 5; i++) {
+    const invoiceNum = `INV-3WAY-DIFF-${1000 + i}`;
+    const utrVal = `UTR-DIFF-${1000 + i}`;
+    const grossAmount = 40000;
+    const expectedSettlement = 39056; // gross minus fees
+    const actualBankReceived = 38936; // Difference of 120
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        invoiceNumber: invoiceNum,
+        referenceNumber: `REF-DIFF-${1000 + i}`,
+        customerName: `DiffClient-${i}`,
+        issueDate: baseDate,
+        dueDate: shiftDays(baseDate, 30),
+        subtotal: 33898.31,
+        tax: 6101.69,
+        totalAmount: grossAmount,
+        paidAmount: grossAmount,
+        balanceDue: 0,
+        status: InvoiceStatus.PAID,
+        paymentStatus: PaymentStatus.PAID
+      }
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        amount: grossAmount,
+        currency: 'INR',
+        paymentMethod: 'NETBANKING',
+        paymentGateway: 'RAZORPAY',
+        gatewayPaymentId: `pay_diff_${1000 + i}`,
+        status: 'CAPTURED',
+        customerName: `DiffClient-${i}`,
+        paymentDate: baseDate,
+        invoiceId: invoice.id
+      }
+    });
+
+    const settlement = await prisma.settlement.create({
+      data: {
+        settlementDate: shiftDays(baseDate, 2),
+        expectedAmount: expectedSettlement,
+        settledAmount: expectedSettlement,
+        fees: 944,
+        currency: 'INR',
+        gatewayReference: utrVal,
+        status: 'PROCESSED'
+      }
+    });
+
+    const txn = await prisma.transaction.create({
+      data: {
+        amount: grossAmount,
+        currency: 'INR',
+        status: 'SUCCESS',
+        type: 'PAYMENT',
+        reference: `pay_diff_${1000 + i}`,
+        paymentId: payment.id,
+        settlementId: settlement.id
+      }
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { transactionId: txn.id }
+    });
+
+    const rawBank = await prisma.rawRecord.create({
+      data: {
+        importBatchId: bankImportBatch.id,
+        rowNumber: 80 + i,
+        rawData: {
+          transaction_id: `BANK-TX-DIFF-${1000 + i}`,
+          date: shiftDays(baseDate, 2).toISOString(),
+          description: `RAZORPAY SETTLEMENT ${utrVal}`,
+          credit: actualBankReceived,
+          debit: 0,
+          utr: utrVal
+        },
+        status: 'NORMALIZED'
+      }
+    });
+
+    await prisma.financialRecord.create({
+      data: {
+        userId: admin.id,
+        sourceType: 'BANK_TRANSACTION',
+        sourceRecordId: rawBank.id,
+        externalId: `BANK-TX-DIFF-${1000 + i}`,
+        recordType: 'BANK_TRANSACTION',
+        amount: actualBankReceived,
+        currency: 'INR',
+        transactionDate: shiftDays(baseDate, 2),
+        description: `RAZORPAY SETTLEMENT ${utrVal}`,
+        reference: utrVal,
+        utr: utrVal,
+        creditAmount: actualBankReceived,
+        debitAmount: 0,
+        status: 'NORMALIZED',
+        importBatchId: bankImportBatch.id
+      }
+    });
+  }
+
+  // 4. 5 Unmatched Settlements (Settlement exists, but no Bank Payout)
+  for (let i = 1; i <= 5; i++) {
+    const utrVal = `UTR-UNMATCHED-SET-${1000 + i}`;
+    const expectedSettlement = 15000;
+
+    await prisma.settlement.create({
+      data: {
+        settlementDate: shiftDays(baseDate, 3),
+        expectedAmount: expectedSettlement,
+        settledAmount: expectedSettlement,
+        fees: 300,
+        currency: 'INR',
+        gatewayReference: utrVal,
+        status: 'PROCESSED'
+      }
+    });
+  }
+
+  // 5. 5 Unmatched Bank Transactions (Bank statement contains credits with no matched Settlement)
+  for (let i = 1; i <= 5; i++) {
+    const utrVal = `UTR-UNMATCHED-BANK-${1000 + i}`;
+    const amountVal = 22000;
+
+    const rawBank = await prisma.rawRecord.create({
+      data: {
+        importBatchId: bankImportBatch.id,
+        rowNumber: 85 + i,
+        rawData: {
+          transaction_id: `BANK-TX-UNMATCHED-${1000 + i}`,
+          date: shiftDays(baseDate, 4).toISOString(),
+          description: `MISC BANK DEPOSIT ${utrVal}`,
+          credit: amountVal,
+          debit: 0,
+          utr: utrVal
+        },
+        status: 'NORMALIZED'
+      }
+    });
+
+    await prisma.financialRecord.create({
+      data: {
+        userId: admin.id,
+        sourceType: 'BANK_TRANSACTION',
+        sourceRecordId: rawBank.id,
+        externalId: `BANK-TX-UNMATCHED-${1000 + i}`,
+        recordType: 'BANK_TRANSACTION',
+        amount: amountVal,
+        currency: 'INR',
+        transactionDate: shiftDays(baseDate, 4),
+        description: `MISC BANK DEPOSIT ${utrVal}`,
+        reference: utrVal,
+        utr: utrVal,
+        creditAmount: amountVal,
+        debitAmount: 0,
+        status: 'NORMALIZED',
+        importBatchId: bankImportBatch.id
+      }
+    });
+  }
+
+  // 6. 5 Ambiguous Records (Amounts close, text references match without UTR codes)
+  for (let i = 1; i <= 5; i++) {
+    const invoiceNum = `INV-3WAY-AMBIG-${1000 + i}`;
+    const expectedSettlement = 48820;
+    const actualBankReceived = 48815; // Difference of 5 rupees
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        invoiceNumber: invoiceNum,
+        referenceNumber: `REF-AMBIG-${1000 + i}`,
+        customerName: `AmbigClient-${i}`,
+        issueDate: baseDate,
+        dueDate: shiftDays(baseDate, 30),
+        subtotal: 42372.88,
+        tax: 7627.12,
+        totalAmount: 50000,
+        paidAmount: 50000,
+        balanceDue: 0,
+        status: InvoiceStatus.PAID,
+        paymentStatus: PaymentStatus.PAID
+      }
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        amount: 50000,
+        currency: 'INR',
+        paymentMethod: 'UPI',
+        paymentGateway: 'RAZORPAY',
+        gatewayPaymentId: `pay_ambig_${1000 + i}`,
+        status: 'CAPTURED',
+        customerName: `AmbigClient-${i}`,
+        paymentDate: baseDate,
+        invoiceId: invoice.id
+      }
+    });
+
+    // Payout reference with no explicit UTR field in DB
+    const settlement = await prisma.settlement.create({
+      data: {
+        settlementDate: shiftDays(baseDate, 7),
+        expectedAmount: expectedSettlement,
+        settledAmount: expectedSettlement,
+        fees: 1180,
+        currency: 'INR',
+        gatewayReference: `REF-GATEWAY-${1000 + i}`,
+        status: 'PROCESSED'
+      }
+    });
+
+    const txn = await prisma.transaction.create({
+      data: {
+        amount: 50000,
+        currency: 'INR',
+        status: 'SUCCESS',
+        type: 'PAYMENT',
+        reference: `pay_ambig_${1000 + i}`,
+        paymentId: payment.id,
+        settlementId: settlement.id
+      }
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { transactionId: txn.id }
+    });
+
+    const rawBank = await prisma.rawRecord.create({
+      data: {
+        importBatchId: bankImportBatch.id,
+        rowNumber: 90 + i,
+        rawData: {
+          transaction_id: `BANK-TX-AMBIG-${1000 + i}`,
+          date: shiftDays(baseDate, 7).toISOString(),
+          // Description has reference identifier but UTR is blank
+          description: `RAZORPAY PAYOUT REF-GATEWAY-${1000 + i}`,
+          credit: actualBankReceived,
+          debit: 0,
+          utr: ""
+        },
+        status: 'NORMALIZED'
+      }
+    });
+
+    await prisma.financialRecord.create({
+      data: {
+        userId: admin.id,
+        sourceType: 'BANK_TRANSACTION',
+        sourceRecordId: rawBank.id,
+        externalId: `BANK-TX-AMBIG-${1000 + i}`,
+        recordType: 'BANK_TRANSACTION',
+        amount: actualBankReceived,
+        currency: 'INR',
+        transactionDate: shiftDays(baseDate, 7),
+        description: `RAZORPAY PAYOUT REF-GATEWAY-${1000 + i}`,
+        reference: `REF-GATEWAY-${1000 + i}`,
+        utr: null, // Empty/unconfigured UTR
+        creditAmount: actualBankReceived,
+        debitAmount: 0,
+        status: 'NORMALIZED',
+        importBatchId: bankImportBatch.id
       }
     });
   }

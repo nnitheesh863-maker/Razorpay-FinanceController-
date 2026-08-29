@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { 
   LayoutDashboard, 
   ArrowRightLeft, 
@@ -39,10 +40,20 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const { user } = useAuth();
+
+  const activeNavItems = [...navItems];
+  if (user?.role === 'ADMIN') {
+    const adminHeaderIndex = activeNavItems.findIndex(item => item.label === 'Administration');
+    if (adminHeaderIndex !== -1) {
+      activeNavItems.splice(adminHeaderIndex + 1, 0, { label: 'Admin Control', icon: Shield, href: '/admin' });
+    }
+  }
+
   return (
     <aside className="w-64 flex-shrink-0 border-r border-border-subtle bg-white hidden lg:flex lg:flex-col h-[calc(100vh-4rem)]">
       <nav className="flex-1 overflow-y-auto p-4 space-y-0.5">
-        {navItems.map((item, index) => {
+        {activeNavItems.map((item, index) => {
           if (item.isHeader) {
             return (
               <div key={index} className="pt-4 pb-1.5 px-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">
