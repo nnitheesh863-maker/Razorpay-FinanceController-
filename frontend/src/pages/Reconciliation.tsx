@@ -600,38 +600,72 @@ export default function ReconciliationPage() {
                 {/* FILE UPLOAD GRID */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Ledger Box */}
-                  <div className="border-2 border-dashed border-gray-200 rounded-2xl p-5 hover:border-[#2F6F73]/50 transition-colors relative flex flex-col items-center justify-center min-h-[160px] text-center">
+                  <div className={`border-2 border-dashed rounded-2xl p-5 transition-colors relative flex flex-col items-center justify-center min-h-[160px] text-center ${
+                    invoiceFile ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200 hover:border-[#2F6F73]/50'
+                  }`}>
                     <input
                       type="file"
                       accept=".csv,.xlsx,.json"
                       onChange={handleInvoiceChange}
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      key={invoiceFile ? invoiceFile.name : 'inv-empty'}
                     />
-                    <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                    <span className="text-xs font-black text-gray-800">UPLOAD INVOICE/LEDGER</span>
-                    <span className="text-[10px] text-gray-400 font-semibold mt-1">CSV / XLSX / JSON</span>
+                    <Upload className={`w-8 h-8 mb-2 ${invoiceFile ? 'text-emerald-400' : 'text-gray-300'}`} />
+                    <span className="text-xs font-black text-gray-800">
+                      {invoiceFile ? 'INVOICE/LEDGER READY' : 'UPLOAD INVOICE/LEDGER'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                      {invoiceFile ? 'Click to change file' : 'CSV / XLSX / JSON'}
+                    </span>
                     {invoiceFile && (
-                      <span className="mt-3 bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-black px-2.5 py-1 rounded-lg">
-                        {invoiceFile.name} ({(invoiceFile.size / 1024).toFixed(1)} KB)
-                      </span>
+                      <div className="mt-3 flex items-center gap-1.5">
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-black px-2.5 py-1 rounded-lg max-w-[180px] truncate">
+                          {invoiceFile.name} ({(invoiceFile.size / 1024).toFixed(1)} KB)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setInvoiceFile(null); }}
+                          className="relative z-10 w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200 transition-colors cursor-pointer flex-shrink-0"
+                          title="Remove file"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
                     )}
                   </div>
 
                   {/* Bank Statement Box */}
-                  <div className="border-2 border-dashed border-gray-200 rounded-2xl p-5 hover:border-[#2F6F73]/50 transition-colors relative flex flex-col items-center justify-center min-h-[160px] text-center">
+                  <div className={`border-2 border-dashed rounded-2xl p-5 transition-colors relative flex flex-col items-center justify-center min-h-[160px] text-center ${
+                    bankFile ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200 hover:border-[#2F6F73]/50'
+                  }`}>
                     <input
                       type="file"
                       accept=".csv,.xlsx,.json"
                       onChange={handleBankChange}
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      key={bankFile ? bankFile.name : 'bank-empty'}
                     />
-                    <Upload className="w-8 h-8 text-gray-300 mb-2" />
-                    <span className="text-xs font-black text-gray-800">UPLOAD BANK STATEMENT</span>
-                    <span className="text-[10px] text-gray-400 font-semibold mt-1">CSV / XLSX / JSON</span>
+                    <Upload className={`w-8 h-8 mb-2 ${bankFile ? 'text-emerald-400' : 'text-gray-300'}`} />
+                    <span className="text-xs font-black text-gray-800">
+                      {bankFile ? 'BANK STATEMENT READY' : 'UPLOAD BANK STATEMENT'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                      {bankFile ? 'Click to change file' : 'CSV / XLSX / JSON'}
+                    </span>
                     {bankFile && (
-                      <span className="mt-3 bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-black px-2.5 py-1 rounded-lg">
-                        {bankFile.name} ({(bankFile.size / 1024).toFixed(1)} KB)
-                      </span>
+                      <div className="mt-3 flex items-center gap-1.5">
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 text-[10px] font-black px-2.5 py-1 rounded-lg max-w-[180px] truncate">
+                          {bankFile.name} ({(bankFile.size / 1024).toFixed(1)} KB)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setBankFile(null); }}
+                          className="relative z-10 w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200 transition-colors cursor-pointer flex-shrink-0"
+                          title="Remove file"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -1015,7 +1015,15 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
             invoiceDate: isNaN(matchedInvoice.date.getTime()) ? 'N/A' : matchedInvoice.date.toISOString().split('T')[0],
             description: desc,
             customerName: matchedInvoice.customerName,
-            severity: Math.abs(amtDiff) > 50000 ? 'CRITICAL' : (Math.abs(amtDiff) > 10000 ? 'HIGH' : 'MEDIUM'),
+            // For REFERENCE/DATE mismatch, use the actual transaction amount as the financial impact indicator
+            // since the monetary difference is 0 (amounts matched, only metadata differs)
+            severity: (() => {
+              const impactAmount = Math.abs(amtDiff) > 0 ? Math.abs(amtDiff) : bank.amount;
+              if (impactAmount > 50000) return 'CRITICAL';
+              if (impactAmount > 20000) return 'HIGH';
+              if (impactAmount > 5000)  return 'MEDIUM';
+              return 'LOW';
+            })(),
             status: 'OPEN'
           });
         }
@@ -1030,7 +1038,7 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
           invoiceDate: 'N/A',
           description: `Bank transaction for ₹${bank.amount.toLocaleString('en-IN')} has no matching Invoice record.`,
           customerName: 'N/A',
-          severity: bank.amount > 50000 ? 'HIGH' : 'MEDIUM',
+          severity: bank.amount > 50000 ? 'CRITICAL' : (bank.amount > 20000 ? 'HIGH' : (bank.amount > 5000 ? 'MEDIUM' : 'LOW')),
           status: 'OPEN'
         });
       }
@@ -1048,7 +1056,7 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
           invoiceDate: isNaN(inv.date.getTime()) ? 'N/A' : inv.date.toISOString().split('T')[0],
           description: `Invoice ${inv.reference} for ₹${inv.amount.toLocaleString('en-IN')} (Customer: ${inv.customerName}) has no matching Bank transaction.`,
           customerName: inv.customerName,
-          severity: inv.amount > 50000 ? 'HIGH' : 'MEDIUM',
+          severity: inv.amount > 50000 ? 'CRITICAL' : (inv.amount > 20000 ? 'HIGH' : (inv.amount > 5000 ? 'MEDIUM' : 'LOW')),
           status: 'OPEN'
         });
       }

@@ -359,37 +359,8 @@ function DashboardLayoutInner() {
 
       </div>
 
-      {/* Floating Action Triggers (Preserved for compatibility/access) */}
-      <div className="fixed bottom-6 right-6 flex flex-col gap-2.5 z-40">
-        
-        {/* Sync Drive action */}
-        <button 
-          onClick={() => setIsSyncOpen(true)}
-          className="w-10 h-10 rounded-full bg-[#111827] text-white hover:bg-neutral-800 flex items-center justify-center shadow-lg transition-colors cursor-pointer"
-          title="Sync Google Drive"
-        >
-          <CloudLightning className="w-5 h-5 text-[#7FA7A3]" />
-        </button>
 
-        {/* Import statement action */}
-        <button 
-          onClick={() => setIsImportOpen(true)}
-          className="w-10 h-10 rounded-full bg-[#111827] text-white hover:bg-neutral-800 flex items-center justify-center shadow-lg transition-colors cursor-pointer"
-          title="Import CSV statement"
-        >
-          <UploadCloud className="w-5 h-5 text-[#7FA7A3]" />
-        </button>
 
-        {/* Manual entry action */}
-        <button 
-          onClick={() => setIsAddEntryOpen(true)}
-          className="w-12 h-12 rounded-full bg-[#2F6F73] hover:bg-[#25575a] text-white flex items-center justify-center shadow-lg transition-colors cursor-pointer"
-          title="Add manual entry"
-        >
-          <PlusCircle className="w-6 h-6" />
-        </button>
-
-      </div>
 
       {/* ======================================================== */}
       {/* 4. DIALOG MODALS IN DARK STYLE */}

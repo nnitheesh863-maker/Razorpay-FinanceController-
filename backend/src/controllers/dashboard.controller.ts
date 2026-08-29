@@ -63,49 +63,47 @@ export const getDashboardOverview = async (req: Request, res: Response): Promise
     const settlementFees = settlementAgg._sum.fees || 0;
     const pendingSettlements = settlementExpected - settlementActual;
 
-    // 5. Reconciliation metrics from Runs
-    const reconciliationRuns = await prisma.reconciliationRun.findMany({
-      where: {
-        status: RunStatus.COMPLETED
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5
-    });
-
-    // Get the latest completed reconciliation run
+    // 5. Reconciliation metrics from the latest COMPLETED run
     const latestRun = await prisma.reconciliationRun.findFirst({
-      where: {
-        status: RunStatus.COMPLETED
-      },
+      where: { status: RunStatus.COMPLETED },
       orderBy: { createdAt: 'desc' }
     });
 
     const recordsProcessed = latestRun ? latestRun.recordsProcessed : 0;
-    const matchedRecords = latestRun ? latestRun.matchedRecords : 0; // Fully Matched
-    
-    const partiallyMatchedCount = latestRun ? await prisma.exception.count({
-      where: {
-        status: ExceptionStatus.OPEN,
-        type: { in: ['AMOUNT_MISMATCH', 'DATE_MISMATCH', 'REFERENCE_MISMATCH', 'CURRENCY_MISMATCH', 'DUPLICATE'] },
-        record: { runId: latestRun.id }
-      }
-    }) : 0;
 
-    const unmatchedCount = latestRun ? await prisma.exception.count({
-      where: {
-        status: ExceptionStatus.OPEN,
-        type: { notIn: ['AMOUNT_MISMATCH', 'DATE_MISMATCH', 'REFERENCE_MISMATCH', 'CURRENCY_MISMATCH', 'DUPLICATE'] },
-        record: { runId: latestRun.id }
-      }
-    }) : 0;
+    // Query ReconciliationRecord.matchStatus directly — this is the authoritative source.
+    // Using latestRun.matchedRecords caused double-counting because it includes partial matches.
+    const fullyMatchedCount = latestRun
+      ? await prisma.reconciliationRecord.count({
+          where: { runId: latestRun.id, matchStatus: 'MATCHED' }
+        })
+      : 0;
 
-    const matchRate = recordsProcessed > 0 ? Number(((matchedRecords / recordsProcessed) * 100).toFixed(2)) : 0;
-    const openExceptionsCount = latestRun ? await prisma.exception.count({
-      where: { 
-        status: ExceptionStatus.OPEN,
-        record: { runId: latestRun.id }
-      }
-    }) : 0;
+    const partiallyMatchedCount = latestRun
+      ? await prisma.reconciliationRecord.count({
+          where: { runId: latestRun.id, matchStatus: 'PARTIAL_MATCH' }
+        })
+      : 0;
+
+    const unmatchedCount = latestRun
+      ? await prisma.reconciliationRecord.count({
+          where: { runId: latestRun.id, matchStatus: 'UNMATCHED' }
+        })
+      : 0;
+
+    // Use only fully-matched records in the match rate calculation
+    const matchedRecords = fullyMatchedCount;
+    const comparableRecords = recordsProcessed > 0 ? recordsProcessed : (fullyMatchedCount + partiallyMatchedCount + unmatchedCount);
+    const matchRate = comparableRecords > 0
+      ? Number(((fullyMatchedCount / comparableRecords) * 100).toFixed(2))
+      : 0;
+
+    const openExceptionsCount = latestRun
+      ? await prisma.exception.count({
+          where: { status: ExceptionStatus.OPEN, record: { runId: latestRun.id } }
+        })
+      : 0;
+
 
     // 6. Exception breakdowns
     const openEx = await prisma.exception.count({ where: { status: ExceptionStatus.OPEN } });
