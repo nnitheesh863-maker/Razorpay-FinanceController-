@@ -165,6 +165,7 @@ export function Login() {
                   error={errors.email?.message}
                   required
                   placeholder="name@finance-controller.com"
+                  autoComplete="username"
                   {...register('email')}
                 />
 
@@ -174,6 +175,7 @@ export function Login() {
                   error={errors.password?.message}
                   required
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   {...register('password')}
                 />
 
