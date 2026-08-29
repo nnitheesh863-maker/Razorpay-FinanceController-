@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, AlertCircle, Key, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Key, CheckCircle2, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const loginSchema = z.object({
@@ -19,7 +19,7 @@ type LoginFields = z.infer<typeof loginSchema>;
 export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [failedMsg, setFailedMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +34,8 @@ export function Login() {
 
   const onSubmit = async (data: LoginFields) => {
     setLoading(true);
-    setErrorMsg(null);
+    setFailedMsg(null);
+    setSuccessMsg(null);
     try {
       await login(data);
       setSuccessMsg('Welcome back! Logging you in...');
@@ -43,7 +44,7 @@ export function Login() {
       }, 1500);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'Invalid email or password. Please try again.');
+      setFailedMsg(err.message || 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -151,10 +152,10 @@ export function Login() {
             >
               <div className="absolute -inset-[100%] bg-[radial-gradient(circle_at_50%_120%,rgba(47,111,115,0.15),transparent_60%)] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
               <form className="space-y-4 relative z-10" onSubmit={handleSubmit(onSubmit)}>
-                {errorMsg && (
+                {failedMsg && (
                   <div className="p-3 bg-red-50 border border-red-100 text-[#C94C4C] rounded-lg text-xs flex items-start gap-2.5">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#C94C4C] mt-0.5" />
-                    <span>{errorMsg}</span>
+                    <span>{failedMsg}</span>
                   </div>
                 )}
 
@@ -247,6 +248,28 @@ export function Login() {
               <h3 className="text-lg font-black text-gray-900 tracking-tight">Success!</h3>
               <p className="text-xs font-bold text-emerald-600 animate-pulse">{successMsg}</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Glowing Error Alert Overlay */}
+      {failedMsg && (
+        <div className="fixed inset-0 z-50 bg-[#0B1726]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-red-500 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-[0_0_50px_rgba(239,68,68,0.3)] animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+              <XCircle className="w-9 h-9 text-red-500 animate-bounce" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-gray-900 tracking-tight">Login Failed</h3>
+              <p className="text-xs font-bold text-red-600 leading-relaxed">{failedMsg}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFailedMsg(null)}
+              className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-black rounded-xl transition-colors cursor-pointer border border-red-100"
+            >
+              Try Again
+            </button>
           </div>
         </div>
       )}
