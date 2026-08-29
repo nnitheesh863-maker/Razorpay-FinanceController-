@@ -9,6 +9,7 @@ import {
   CloudLightning
 } from 'lucide-react';
 import { LedgerlyProvider, useLedgerly } from '../../context/LedgerlyContext';
+import { useAuth } from '../../context/AuthContext';
 import { AppSidebar, TopHeader } from '../dashboard/ShellComponents';
 
 function DashboardLayoutInner() {
@@ -22,6 +23,7 @@ function DashboardLayoutInner() {
     refetchState,
     updatePreferences
   } = useLedgerly();
+  const { logout } = useAuth();
 
   // Responsive Drawer Sidebar Menu State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -102,8 +104,7 @@ function DashboardLayoutInner() {
     : (menuItems.find(item => location.pathname.startsWith(item.path))?.label || 'Overview');
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    logout();
     navigate('/login');
   };
 
