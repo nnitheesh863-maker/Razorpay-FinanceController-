@@ -152,6 +152,10 @@ export function Login() {
             >
               <div className="absolute -inset-[100%] bg-[radial-gradient(circle_at_50%_120%,rgba(47,111,115,0.15),transparent_60%)] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
               <form className="space-y-4 relative z-10" onSubmit={handleSubmit(onSubmit)}>
+                {/* Dummy inputs to capture browser autofill and keep real fields clean */}
+                <input type="text" name="email_dummy" style={{ display: 'none' }} autoComplete="off" />
+                <input type="password" name="password_dummy" style={{ display: 'none' }} autoComplete="off" />
+
                 {failedMsg && (
                   <div className="p-3 bg-red-50 border border-red-100 text-[#C94C4C] rounded-lg text-xs flex items-start gap-2.5">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#C94C4C] mt-0.5" />
@@ -165,7 +169,7 @@ export function Login() {
                   error={errors.email?.message}
                   required
                   placeholder="name@finance-controller.com"
-                  autoComplete="username"
+                  autoComplete="new-password"
                   {...register('email')}
                 />
 
@@ -175,7 +179,7 @@ export function Login() {
                   error={errors.password?.message}
                   required
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   {...register('password')}
                 />
 
