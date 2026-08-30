@@ -75,7 +75,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // Connect to backend Socket.IO server
-    const socketUrl = 'http://localhost:5000';
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 
+                      (import.meta.env.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/v1\/?$/, '') : '') || 
+                      'http://localhost:5000';
     const socket = io(socketUrl, {
       query: { userId },
       reconnectionAttempts: 5,
