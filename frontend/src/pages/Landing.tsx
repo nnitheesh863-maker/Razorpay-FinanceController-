@@ -127,13 +127,21 @@ export function Landing() {
 
           <div className="flex items-center gap-3">
             {token ? (
-              <Link 
-                to="/dashboard"
-                className="bg-[#0F2433] hover:bg-[#1f3b4f] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
-              >
-                <span>Launch Demo</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              <>
+                <Link 
+                  to="/login"
+                  className="text-xs font-bold text-[#5F6B78] hover:text-[#2F6F73] px-3 py-2 transition-colors"
+                >
+                  Login
+                </Link>
+                <Link 
+                  to="/dashboard"
+                  className="bg-[#0F2433] hover:bg-[#1f3b4f] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <span>Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </>
             ) : (
               <>
                 <Link 

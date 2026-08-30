@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, AlertCircle, Key, CheckCircle2, XCircle } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Key, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const loginSchema = z.object({
@@ -22,6 +22,7 @@ export function Login() {
   const [failedMsg, setFailedMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -38,10 +39,10 @@ export function Login() {
     setSuccessMsg(null);
     try {
       await login(data);
-      setSuccessMsg('Welcome back! Logging you in...');
+      setSuccessMsg('Login successful! Welcome to your dashboard.');
       setTimeout(() => {
         navigate('/dashboard');
-      }, 1500);
+      }, 3000);
     } catch (err: any) {
       console.error(err);
       setFailedMsg(err.message || 'Invalid email or password. Please try again.');
@@ -173,15 +174,24 @@ export function Login() {
                   {...register('email')}
                 />
 
-                <Input
-                  label="Security Password"
-                  type="password"
-                  error={errors.password?.message}
-                  required
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  {...register('password')}
-                />
+                <div className="relative">
+                  <Input
+                    label="Security Password"
+                    type={showPassword ? 'text' : 'password'}
+                    error={errors.password?.message}
+                    required
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    {...register('password')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
 
                 <div className="pt-2">
                   <Button
@@ -246,14 +256,24 @@ export function Login() {
       {/* Glowing Success Alert Overlay */}
       {successMsg && (
         <div className="fixed inset-0 z-50 bg-[#0B1726]/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-emerald-500 rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              <CheckCircle2 className="w-9 h-9 text-emerald-500 animate-bounce" />
+          <div className="bg-white border border-gray-100 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-[0_0_50px_rgba(16,185,129,0.15)] animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 bg-emerald-50 border border-emerald-100 rounded-full flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+              <svg className="w-10 h-10 text-emerald-500 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-black text-gray-900 tracking-tight">Success!</h3>
-              <p className="text-xs font-bold text-emerald-600 animate-pulse">{successMsg}</p>
+              <h3 className="text-xl font-bold text-gray-900 tracking-tight">Login Successful</h3>
+              <p className="text-xs text-gray-500 font-semibold leading-relaxed">
+                {successMsg}
+              </p>
             </div>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-sm"
+            >
+              Go to Dashboard
+            </button>
           </div>
         </div>
       )}

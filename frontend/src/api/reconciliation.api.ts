@@ -37,10 +37,19 @@ export const runReconciliation = async (config: any): Promise<{ data: Reconcilia
   return { data: response.data.data };
 };
 
-export const compareFiles = async (bankFile: File, invoiceFile: File): Promise<any> => {
+export const compareFiles = async (
+  bankFile: File, 
+  invoiceFile: File, 
+  options?: { compareAmount?: boolean; compareDate?: boolean; compareReference?: boolean }
+): Promise<any> => {
   const formData = new FormData();
   formData.append('bankFile', bankFile);
   formData.append('invoiceFile', invoiceFile);
+  if (options) {
+    formData.append('compareAmount', String(options.compareAmount ?? true));
+    formData.append('compareDate', String(options.compareDate ?? true));
+    formData.append('compareReference', String(options.compareReference ?? true));
+  }
   const response = await apiClient.post('/reconciliation/compare-files', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'

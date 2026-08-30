@@ -889,6 +889,10 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    const compareAmount = req.body.compareAmount !== 'false';
+    const compareDate = req.body.compareDate !== 'false';
+    const compareReference = req.body.compareReference !== 'false';
+
     // Parse files
     let bankRows: any[] = [];
     let invoiceRows: any[] = [];
@@ -966,7 +970,7 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
 
     normalizedBank.forEach(bank => {
       // Find invoice by reference
-      let matchedInvoice = bank.reference
+      let matchedInvoice = (compareReference && bank.reference)
         ? normalizedInvoices.find(inv => !inv.matched && inv.reference.toLowerCase() === bank.reference.toLowerCase())
         : null;
 
@@ -975,9 +979,19 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
       if (!matchedInvoice) {
         matchedInvoice = normalizedInvoices.find(inv => {
           if (inv.matched) return false;
-          const sameAmount = Math.abs(inv.amount - bank.amount) < 0.01;
-          const diffDays = Math.abs((inv.date.getTime() - bank.date.getTime()) / (1000 * 60 * 60 * 24));
-          return sameAmount && diffDays <= 3;
+          
+          let matchesAmount = true;
+          if (compareAmount) {
+            matchesAmount = Math.abs(inv.amount - bank.amount) < 0.01;
+          }
+          
+          let matchesDate = true;
+          if (compareDate) {
+            const diffDays = Math.abs((inv.date.getTime() - bank.date.getTime()) / (1000 * 60 * 60 * 24));
+            matchesDate = diffDays <= 3;
+          }
+          
+          return matchesAmount && matchesDate;
         });
         if (matchedInvoice) isFuzzy = true;
       }
@@ -989,18 +1003,24 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
         const hasAmtDiff = Math.abs(amtDiff) > 0.01;
         const dateDiffDays = Math.abs((bank.date.getTime() - matchedInvoice.date.getTime()) / (1000 * 60 * 60 * 24));
         const hasDateDiff = dateDiffDays > 7;
+        const hasRefDiff = isFuzzy;
 
-        if (!hasAmtDiff && !isFuzzy) {
+        // Determine if there is any mismatch based on active comparison options
+        const isAmountMismatch = hasAmtDiff && compareAmount;
+        const isReferenceMismatch = hasRefDiff && compareReference;
+        const isDateMismatch = hasDateDiff && compareDate;
+
+        if (!isAmountMismatch && !isReferenceMismatch && !isDateMismatch) {
           matchedCount++;
         } else {
           matchedCount++;
           let diffType = 'AMOUNT_MISMATCH';
           let desc = `Amount mismatch: Bank says ₹${bank.amount.toLocaleString('en-IN')}, Invoice says ₹${matchedInvoice.amount.toLocaleString('en-IN')}. Diff: ₹${amtDiff.toLocaleString('en-IN')}.`;
           
-          if (isFuzzy) {
+          if (isReferenceMismatch) {
             diffType = 'REFERENCE_MISMATCH';
             desc = `Reference mismatch: Row matched by amount (₹${bank.amount.toLocaleString('en-IN')}) and date, but references differ (Bank: ${bank.reference || 'None'}, Invoice: ${matchedInvoice.reference}).`;
-          } else if (hasDateDiff) {
+          } else if (isDateMismatch) {
             diffType = 'DATE_MISMATCH';
             desc = `Date discrepancy: Dates differ by ${Math.round(dateDiffDays)} days (Bank: ${bank.date.toLocaleDateString()}, Invoice: ${matchedInvoice.date.toLocaleDateString()}).`;
           }
@@ -1015,8 +1035,6 @@ export const compareFiles = async (req: Request, res: Response): Promise<void> =
             invoiceDate: isNaN(matchedInvoice.date.getTime()) ? 'N/A' : matchedInvoice.date.toISOString().split('T')[0],
             description: desc,
             customerName: matchedInvoice.customerName,
-            // For REFERENCE/DATE mismatch, use the actual transaction amount as the financial impact indicator
-            // since the monetary difference is 0 (amounts matched, only metadata differs)
             severity: (() => {
               const impactAmount = Math.abs(amtDiff) > 0 ? Math.abs(amtDiff) : bank.amount;
               if (impactAmount > 50000) return 'CRITICAL';

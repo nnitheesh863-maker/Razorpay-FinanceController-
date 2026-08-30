@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, AlertCircle, ArrowRight, Lock, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, AlertCircle, ArrowRight, Lock, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const registerSchema = z.object({
@@ -27,6 +27,8 @@ export function Register() {
   const [failedMsg, setFailedMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
     register,
@@ -48,10 +50,10 @@ export function Register() {
         password: data.password,
       });
       // 2. Alert success using custom state
-      setSuccessMsg('Account created successfully! Redirecting...');
+      setSuccessMsg('Congratulations! Your account has been successfully created. You can now log in to access our services.');
       setTimeout(() => {
         navigate('/dashboard');
-      }, 1500);
+      }, 3500);
     } catch (err: any) {
       console.error(err);
       setFailedMsg(err.message || 'Registration failed. The email may already be in use.');
@@ -181,23 +183,41 @@ export function Register() {
               />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Password"
-                  type="password"
-                  error={errors.password?.message}
-                  required
-                  placeholder="••••••••"
-                  {...register('password')}
-                />
-
-                <Input
-                  label="Confirm Password"
-                  type="password"
-                  error={errors.confirmPassword?.message}
-                  required
-                  placeholder="••••••••"
-                  {...register('confirmPassword')}
-                />
+                <div className="relative">
+                  <Input
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    error={errors.password?.message}
+                    required
+                    placeholder="••••••••"
+                    {...register('password')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+  
+                <div className="relative">
+                  <Input
+                    label="Confirm Password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    error={errors.confirmPassword?.message}
+                    required
+                    placeholder="••••••••"
+                    {...register('confirmPassword')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="pt-2">
@@ -230,14 +250,24 @@ export function Register() {
       {/* Glowing Success Alert Overlay */}
       {successMsg && (
         <div className="fixed inset-0 z-50 bg-[#0B1726]/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-emerald-500 rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              <CheckCircle2 className="w-9 h-9 text-emerald-500 animate-bounce" />
+          <div className="bg-white border border-gray-100 rounded-3xl p-8 max-w-sm w-full text-center space-y-5 shadow-[0_0_50px_rgba(16,185,129,0.15)] animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 bg-emerald-50 border border-emerald-100 rounded-full flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+              <svg className="w-10 h-10 text-emerald-500 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-black text-gray-900 tracking-tight">Success!</h3>
-              <p className="text-xs font-bold text-emerald-600 animate-pulse">{successMsg}</p>
+              <h3 className="text-xl font-bold text-gray-900 tracking-tight">Registration Successful!</h3>
+              <p className="text-xs text-gray-500 font-semibold leading-relaxed">
+                {successMsg}
+              </p>
             </div>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-full py-3 bg-[#0F2433] hover:bg-[#1a3d56] text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-sm"
+            >
+              Proceed to dashboard
+            </button>
           </div>
         </div>
       )}

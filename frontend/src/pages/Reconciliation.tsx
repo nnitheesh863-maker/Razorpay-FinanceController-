@@ -212,7 +212,11 @@ export default function ReconciliationPage() {
       await new Promise(r => setTimeout(r, 800));
       setTwoFileStep('matching');
 
-      const res = await compareFiles(bankFile, invoiceFile);
+      const res = await compareFiles(bankFile, invoiceFile, {
+        compareAmount,
+        compareDate,
+        compareReference: compareRef
+      });
 
       await new Promise(r => setTimeout(r, 800));
 
