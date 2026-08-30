@@ -78,7 +78,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error('Signup error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error', error: error.message || error });
+    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
   }
 };
 
@@ -138,7 +138,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error('Login error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error', error: error.message || error });
+    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
   }
 };
 
