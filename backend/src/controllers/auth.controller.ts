@@ -263,3 +263,107 @@ export const getAdminUsersAudit = async (req: Request, res: Response): Promise<v
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
+
+export const adminRegister = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, email, password, inviteCode } = req.body;
+
+    if (!name || !email || !password || !inviteCode) {
+      res.status(400).json({ success: false, message: 'Missing required fields' });
+      return;
+    }
+
+    // Validate invite code
+    const validInviteCode = process.env.ADMIN_INVITE_CODE || 'AFC-ADMIN-2026';
+    if (inviteCode !== validInviteCode) {
+      res.status(403).json({ success: false, message: 'Invalid admin invite code' });
+      return;
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      res.status(400).json({ success: false, message: 'Email already in use' });
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        passwordHash: hashedPassword,
+        authProvider: AuthProvider.EMAIL,
+        emailVerified: false,
+        role: Role.ADMIN
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Admin account created successfully.',
+    });
+  } catch (error: any) {
+    console.error('Admin signup error:', error);
+    res.status(500).json({ success: false, message: 'Server error during admin registration' });
+  }
+};
+
+export const adminLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      res.status(400).json({ success: false, message: 'Invalid credentials' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user || !user.passwordHash) {
+      res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return;
+    }
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+
+    if (!isMatch) {
+      res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return;
+    }
+
+    if (user.role !== Role.ADMIN) {
+      res.status(403).json({ success: false, message: 'Access denied. Admin privileges required.' });
+      return;
+    }
+
+    const token = generateToken(user.id);
+
+    // Set HTTP-only cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+          authProvider: user.authProvider,
+          role: user.role,
+        },
+        token,
+      },
+    });
+  } catch (error: any) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ success: false, message: 'Server error during admin login' });
+  }
+};

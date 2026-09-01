@@ -27,12 +27,7 @@ export function MobileSidebar({ isOpen, onClose }: { isOpen: boolean, onClose: (
   const { user } = useAuth();
 
   const activeNavItems = [...navItems];
-  if (user?.role === 'ADMIN') {
-    const adminHeaderIndex = activeNavItems.findIndex(item => item.label === 'Administration');
-    if (adminHeaderIndex !== -1) {
-      activeNavItems.splice(adminHeaderIndex + 1, 0, { label: 'Admin Control', icon: Shield, href: '/admin' });
-    }
-  }
+
 
   useEffect(() => {
     if (isOpen) {

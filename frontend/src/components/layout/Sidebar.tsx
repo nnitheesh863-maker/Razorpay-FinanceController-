@@ -1,14 +1,14 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  LayoutDashboard, 
-  ArrowRightLeft, 
-  FileText, 
-  CreditCard, 
+import {
+  LayoutDashboard,
+  ArrowRightLeft,
+  FileText,
+  CreditCard,
   Coins,
-  CheckSquare, 
-  AlertTriangle, 
-  Sparkles, 
+  CheckSquare,
+  AlertTriangle,
+  Sparkles,
   BarChart3,
   Upload,
   Shield,
@@ -18,21 +18,21 @@ import {
 const navItems = [
   { label: 'Overview', isHeader: true },
   { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-  
+
   { label: 'Core Ledger', isHeader: true },
   { label: 'Transactions', icon: ArrowRightLeft, href: '/transactions' },
   { label: 'Invoices', icon: FileText, href: '/invoices' },
   { label: 'Payments', icon: CreditCard, href: '/payments' },
   { label: 'Settlements', icon: Coins, href: '/settlements' },
-  
+
   { label: 'Audit & Health', isHeader: true },
   { label: 'Reconciliation', icon: CheckSquare, href: '/reconciliation' },
   { label: 'Exceptions', icon: AlertTriangle, href: '/exceptions' },
-  
+
   { label: 'Intelligence', isHeader: true },
   { label: 'AI Controller', icon: Sparkles, href: '/agent' },
   { label: 'Reports', icon: BarChart3, href: '/reports' },
-  
+
   { label: 'Administration', isHeader: true },
   { label: 'Imports', icon: Upload, href: '/imports' },
   { label: 'Audit Logs', icon: Shield, href: '/audit-logs' },
@@ -43,12 +43,6 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const activeNavItems = [...navItems];
-  if (user?.role === 'ADMIN') {
-    const adminHeaderIndex = activeNavItems.findIndex(item => item.label === 'Administration');
-    if (adminHeaderIndex !== -1) {
-      activeNavItems.splice(adminHeaderIndex + 1, 0, { label: 'Admin Control', icon: Shield, href: '/admin' });
-    }
-  }
 
   return (
     <aside className="w-64 flex-shrink-0 border-r border-border-subtle bg-white hidden lg:flex lg:flex-col h-[calc(100vh-4rem)]">
@@ -61,17 +55,16 @@ export function Sidebar() {
               </div>
             );
           }
-          
+
           const Icon = item.icon!;
           return (
             <NavLink
               key={index}
               to={item.href!}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  isActive 
-                    ? 'bg-[#eff6ff] text-[#0048ff] font-extrabold shadow-2xs border-l-2 border-[#0048ff] rounded-l-none' 
-                    : 'text-text-main hover:bg-neutral-50 hover:text-text-main'
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${isActive
+                  ? 'bg-[#eff6ff] text-[#0048ff] font-extrabold shadow-2xs border-l-2 border-[#0048ff] rounded-l-none'
+                  : 'text-text-main hover:bg-neutral-50 hover:text-text-main'
                 }`
               }
             >

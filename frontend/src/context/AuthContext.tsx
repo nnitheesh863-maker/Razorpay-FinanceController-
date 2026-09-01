@@ -17,6 +17,7 @@ interface AuthContextType {
   signup: (payload: any) => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  setAuthData: (user: User, token: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -108,13 +109,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     setLoading(true);
     try {
-      await apiClient.post('/auth/logout').catch(() => {});
+      await apiClient.post('/auth/logout').catch(() => { });
     } finally {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
       setLoading(false);
     }
+  };
+
+  const setAuthData = (userDetails: User, token: string) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userDetails));
+    setUser(userDetails);
   };
 
   return (
@@ -126,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signup,
         logout,
         isAuthenticated: !!user,
+        setAuthData,
       }}
     >
       {children}

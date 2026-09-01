@@ -32,8 +32,13 @@ import CashIntelligencePage from './pages/CashIntelligence';
 import ControlScorePage from './pages/ControlScore';
 import AnalyticsPage from './pages/Analytics';
 import DemoPage from './pages/Demo';
-import AdminDashboard from './pages/AdminDashboard';
 import { SocketProvider } from './context/SocketContext';
+
+// Admin Pages
+import AdminAuth from './pages/admin/AdminAuth';
+import AdminLayout from './components/layout/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminPlaceholder from './pages/admin/AdminPlaceholder';
 
 // PrivateRoute Guard (Check authentication token via AuthContext)
 function PrivateRoute() {
@@ -52,7 +57,7 @@ function PrivateRoute() {
 
 // PublicOnlyRoute Guard (for guest login/register screens)
 function PublicOnlyRoute() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
 
   if (loading) {
     return (
@@ -62,7 +67,32 @@ function PublicOnlyRoute() {
     );
   }
 
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Outlet />;
+  if (isAuthenticated) {
+    if (user?.role === 'ADMIN') {
+      return <Navigate to="/admin/dashboard" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Outlet />;
+}
+
+// AdminOnlyRoute Guard (Ensures only ADMIN role can access)
+function AdminOnlyRoute() {
+  const { isAuthenticated, loading, user } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0B1726] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2F6F73]"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
+  if (user?.role !== 'ADMIN') return <Navigate to="/dashboard" replace />;
+
+  return <Outlet />;
 }
 
 const queryClient = new QueryClient();
@@ -74,49 +104,68 @@ export default function App() {
         <SocketProvider>
           <BrowserRouter>
             <Routes>
-          {/* Public Landing Page */}
-          <Route path="/" element={<Landing />} />
+              {/* Public Landing Page */}
+              <Route path="/" element={<Landing />} />
 
-          {/* Guest Only Routes */}
-          <Route element={<PublicOnlyRoute />}>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-          </Route>
+              {/* Guest Only Routes */}
+              <Route element={<PublicOnlyRoute />}>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/admin/login" element={<AdminAuth />} />
+                <Route path="/admin/register" element={<AdminAuth />} />
+              </Route>
 
-          {/* Protected Finance Controller Dashboard Pages */}
-          <Route element={<PrivateRoute />}>
-            <Route element={<DashboardLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/data-center" element={<DataCenterPage />} />
-              <Route path="/transactions" element={<TransactionsPage />} />
-              <Route path="/invoices" element={<InvoicesPage />} />
-              <Route path="/payments" element={<PaymentsPage />} />
-              <Route path="/settlements" element={<SettlementsPage />} />
-              <Route path="/reconciliation" element={<ReconciliationPage />} />
-              <Route path="/exceptions" element={<ExceptionsPage />} />
-              <Route path="/agent" element={<AgentPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/imports" element={<ImportsPage />} />
-              <Route path="/audit-logs" element={<AuditLogsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/recurring" element={<RecurringPage />} />
-              <Route path="/subscriptions" element={<SubscriptionsPage />} />
-              <Route path="/budgets" element={<BudgetsPage />} />
-              <Route path="/goals" element={<GoalsPage />} />
-              <Route path="/documents" element={<DocumentsPage />} />
-              <Route path="/rules" element={<RulesPage />} />
-              <Route path="/cash-intelligence" element={<CashIntelligencePage />} />
-              <Route path="/control-score" element={<ControlScorePage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/demo" element={<DemoPage />} />
-              <Route path="/admin" element={<AdminDashboard />} />
-            </Route>
-          </Route>
+              {/* Protected Finance Controller Dashboard Pages */}
+              <Route element={<PrivateRoute />}>
+                <Route element={<DashboardLayout />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/data-center" element={<DataCenterPage />} />
+                  <Route path="/transactions" element={<TransactionsPage />} />
+                  <Route path="/invoices" element={<InvoicesPage />} />
+                  <Route path="/payments" element={<PaymentsPage />} />
+                  <Route path="/settlements" element={<SettlementsPage />} />
+                  <Route path="/reconciliation" element={<ReconciliationPage />} />
+                  <Route path="/exceptions" element={<ExceptionsPage />} />
+                  <Route path="/agent" element={<AgentPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/imports" element={<ImportsPage />} />
+                  <Route path="/audit-logs" element={<AuditLogsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/recurring" element={<RecurringPage />} />
+                  <Route path="/subscriptions" element={<SubscriptionsPage />} />
+                  <Route path="/budgets" element={<BudgetsPage />} />
+                  <Route path="/goals" element={<GoalsPage />} />
+                  <Route path="/documents" element={<DocumentsPage />} />
+                  <Route path="/rules" element={<RulesPage />} />
+                  <Route path="/cash-intelligence" element={<CashIntelligencePage />} />
+                  <Route path="/control-score" element={<ControlScorePage />} />
+                  <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/demo" element={<DemoPage />} />
+                </Route>
 
-          {/* Redirect unknown routes */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+                {/* Admin Control Portal */}
+                <Route element={<AdminOnlyRoute />}>
+                  <Route path="/admin" element={<AdminLayout />}>
+                    <Route path="dashboard" element={<AdminDashboard />} />
+                    <Route index element={<Navigate to="dashboard" replace />} />
+                    <Route path="users" element={<AdminPlaceholder />} />
+                    <Route path="reconciliation-runs" element={<AdminPlaceholder />} />
+                    <Route path="exceptions" element={<AdminPlaceholder />} />
+                    <Route path="documents" element={<AdminPlaceholder />} />
+                    <Route path="razorpay" element={<AdminPlaceholder />} />
+                    <Route path="ai-activity" element={<AdminPlaceholder />} />
+                    <Route path="voice-ai" element={<AdminPlaceholder />} />
+                    <Route path="audit-logs" element={<AdminPlaceholder />} />
+                    <Route path="system-health" element={<AdminPlaceholder />} />
+                    <Route path="settings" element={<AdminPlaceholder />} />
+                  </Route>
+                </Route>
+              </Route>
+
+              {/* Redirect unknown routes */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
         </SocketProvider>
       </AuthProvider>
     </QueryClientProvider>

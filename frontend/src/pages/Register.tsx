@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, AlertCircle, ArrowRight, Lock, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, AlertCircle, ArrowRight, Lock, CheckCircle2, Eye, EyeOff, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const registerSchema = z.object({
@@ -232,16 +232,23 @@ export function Register() {
               </div>
             </form>
 
-            <div className="mt-6 text-center lg:text-left flex justify-between items-center text-xs border-t border-neutral-100 pt-5">
-              <span className="text-neutral-400">
-                Already registered?{' '}
-                <Link to="/login" className="font-bold text-[#2F6F73] hover:underline transition-colors">
-                  Sign In
+            <div className="mt-6 text-center lg:text-left flex flex-col gap-3 text-xs border-t border-neutral-100 pt-5">
+              <div className="flex justify-between items-center w-full">
+                <span className="text-neutral-400">
+                  Already registered?{' '}
+                  <Link to="/login" className="font-bold text-[#2F6F73] hover:underline transition-colors">
+                    Sign In
+                  </Link>
+                </span>
+                <Link to="/" className="text-neutral-400 hover:text-neutral-700 transition-colors font-semibold">
+                  ← Return Home
                 </Link>
-              </span>
-              <Link to="/" className="text-neutral-400 hover:text-neutral-700 transition-colors font-semibold">
-                ← Return Home
-              </Link>
+              </div>
+              <div className="pt-2 border-t border-neutral-50 flex justify-center w-full">
+                <Link to="/admin/register" className="inline-flex items-center justify-center w-full px-4 py-2 border border-neutral-200 text-neutral-600 rounded-lg font-bold hover:bg-neutral-50 transition-colors">
+                  System Administrator Registration
+                </Link>
+              </div>
             </div>
           </motion.div>
         </div>

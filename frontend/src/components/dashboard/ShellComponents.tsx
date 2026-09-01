@@ -58,12 +58,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     { label: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
 
-  if (user?.role === 'ADMIN') {
-    const settingsIndex = sidebarItems.findIndex(item => item.label === 'Settings');
-    if (settingsIndex !== -1) {
-      sidebarItems.splice(settingsIndex, 0, { label: 'Admin Control', path: '/admin', icon: Shield });
-    }
-  }
+
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-white text-[#0B1726] border-r border-[#E4E7EC] w-[260px]">

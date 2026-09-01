@@ -51,11 +51,6 @@ export function Login() {
     }
   };
 
-  const handleQuickLogin = (email: string) => {
-    setValue('email', email);
-    setValue('password', 'password123');
-  };
-
   return (
     <div className="min-h-screen bg-[#F6F8FA] flex flex-col lg:flex-row font-sans selection:bg-[#2F6F73]/20">
       {/* Left Panel: Enterprise Branding */}
@@ -63,7 +58,7 @@ export function Login() {
         {/* Decorative elements */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_30%,#2F6F73,transparent_60%)] opacity-20" />
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff02_1px,transparent_1px),linear-gradient(to_bottom,#ffffff02_1px,transparent_1px)] bg-[size:32px_32px]" />
-        
+
         {/* Header */}
         <div className="relative z-10 flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-[#2F6F73] text-white font-extrabold text-lg tracking-tight">
@@ -204,55 +199,30 @@ export function Login() {
                   </Button>
                 </div>
               </form>
-
-              {/* Quick Access Profiles */}
-              <div className="mt-8 border-t border-neutral-100 pt-6">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block mb-3 text-center lg:text-left">
-                  Quick Access Profiles (Development)
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin@razorpay.com')}
-                    className="flex items-center justify-between px-3.5 py-2.5 border border-neutral-200 rounded-lg hover:bg-neutral-50 text-left transition-all cursor-pointer hover:border-neutral-300"
-                  >
-                    <div>
-                      <span className="text-xs font-bold text-[#0B1726] block">Admin Auditor</span>
-                      <span className="text-[10px] text-neutral-400 block">Aditya Sharma</span>
-                    </div>
-                    <Key className="w-3.5 h-3.5 text-neutral-400" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('manager@razorpay.com')}
-                    className="flex items-center justify-between px-3.5 py-2.5 border border-neutral-200 rounded-lg hover:bg-neutral-50 text-left transition-all cursor-pointer hover:border-neutral-300"
-                  >
-                    <div>
-                      <span className="text-xs font-bold text-[#0B1726] block">Finance Manager</span>
-                      <span className="text-[10px] text-neutral-400 block">Neha Goel</span>
-                    </div>
-                    <Key className="w-3.5 h-3.5 text-neutral-400" />
-                  </button>
-                </div>
-              </div>
             </motion.div>
 
-            <div className="mt-8 text-center lg:text-left flex justify-between items-center text-xs border-t border-neutral-100 pt-5">
-              <span className="text-neutral-400">
-                Need access?{' '}
-                <Link to="/register" className="font-bold text-[#2F6F73] hover:underline transition-colors">
-                  Create workspace profile
+            <div className="mt-8 text-center lg:text-left flex flex-col gap-3 text-xs border-t border-neutral-100 pt-5">
+              <div className="flex justify-between items-center w-full">
+                <span className="text-neutral-400">
+                  Need access?{' '}
+                  <Link to="/register" className="font-bold text-[#2F6F73] hover:underline transition-colors">
+                    Create workspace profile
+                  </Link>
+                </span>
+                <Link to="/" className="text-neutral-400 hover:text-neutral-700 transition-colors font-semibold">
+                  ← Return Home
                 </Link>
-              </span>
-              <Link to="/" className="text-neutral-400 hover:text-neutral-700 transition-colors font-semibold">
-                ← Return Home
-              </Link>
+              </div>
+              <div className="pt-2 border-t border-neutral-50 flex justify-center w-full">
+                <Link to="/admin/login" className="inline-flex items-center justify-center w-full px-4 py-2 border border-neutral-200 text-neutral-600 rounded-lg font-bold hover:bg-neutral-50 transition-colors">
+                  System Administrator Login
+                </Link>
+              </div>
             </div>
           </div>
         </div>
       </div>
-      
+
       {/* Glowing Success Alert Overlay */}
       {successMsg && (
         <div className="fixed inset-0 z-50 bg-[#0B1726]/40 backdrop-blur-xs flex items-center justify-center p-4">

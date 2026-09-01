@@ -22,6 +22,7 @@ import webhookRoutes from './routes/webhook.routes';
 import cashRoutes from './routes/cash.routes';
 import copilotRoutes from './routes/copilot.routes';
 import controlScoreRoutes from './routes/controlScore.routes';
+import adminRoutes from './routes/admin.routes';
 import { secureHeaders, rateLimiter, sanitizeInputs, errorHandler } from './middleware/security.middleware';
 import path from 'path';
 
@@ -58,6 +59,7 @@ app.use('/api/v1/cash', cashRoutes);
 app.use('/api/v1/copilot', copilotRoutes);
 app.use('/api/v1/control-score', controlScoreRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // Static uploads serving
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
